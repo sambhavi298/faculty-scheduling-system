@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { createPool } from '../../src/db/client';
 import { AppointmentRepository } from '../../src/repositories/appointment.repository';
 import { TimeRange } from '../../src/domain/time-range';
+import { stopPostgres, startPostgres, waitForPostgresUp } from './postgres-process-control';
 
 /**
  * Level 7 — Section 6: Failure injection.
@@ -23,87 +24,23 @@ import { TimeRange } from '../../src/domain/time-range';
  * it in the same `jest` invocation as the other projects (unit,
  * integration, concurrency, security) risks their in-flight database
  * queries failing collaterally while Postgres is down. Always run this
- * project by itself:
+ * project by itself, using the npm script (NOT the raw `npx jest ...`
+ * command — the script is what carries `--coverage=false`; without it,
+ * this project's 0% coverage of the app-layer files `npm test` tracks
+ * trips the same coverage-threshold failure `test:performance` used to
+ * have, for the same reason — see `package.json`):
  *
- *   npx jest --selectProjects failure-injection --runInBand
+ *   npm run test:failure-injection
+ *
+ * `stopPostgres()`/`startPostgres()`/`waitForPostgresUp()` — the actual
+ * cross-platform process control, including Windows service-name
+ * auto-detection — live in `./postgres-process-control.ts`, with their own
+ * unit tests in `./postgres-process-control.test.ts` (pure logic, mocked
+ * `execSync`, no real Postgres/Windows service required to run them).
  */
 
 const STUDENT_A = '100';
 const FACULTY = '200';
-
-function slot(startIso: string, endIso: string): TimeRange {
-  return TimeRange.create(new Date(startIso), new Date(endIso));
-}
-
-function waitForPostgresUp(timeoutMs: number): void {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      execSync('pg_isready -h 127.0.0.1 -p 5432', { stdio: 'ignore' });
-      return;
-    } catch {
-      // not ready yet, keep polling
-    }
-  }
-  throw new Error('Postgres did not come back up within the timeout');
-}
-
-/**
- * Process control for the real PostgreSQL server, made cross-platform.
- *
- * PROBLEM: this file previously hardcoded `service postgresql start/stop`,
- * which only exists on Linux distributions that use the `service` wrapper
- * (e.g. the Debian/Ubuntu-style container this project was originally
- * developed in). On Windows — where PostgreSQL normally installs as a
- * Windows Service — `service` does not exist at all, so this test failed
- * outright with "'service' is not recognized..." rather than testing
- * anything.
- *
- * FIX: pick a platform-appropriate default, but make it overridable via
- * PG_STOP_CMD / PG_START_CMD environment variables, because there is no
- * single correct Windows command here — the Windows service name depends
- * on the installer and PostgreSQL version (commonly
- * `postgresql-x64-16`, but this varies). Find your exact service name with
- * `Get-Service -Name postgresql*` in PowerShell, and if it isn't
- * `postgresql-x64-16`, set PG_STOP_CMD / PG_START_CMD in your `.env` (or
- * the shell environment) to match, e.g.:
- *
- *   PG_STOP_CMD=net stop postgresql-x64-17
- *   PG_START_CMD=net start postgresql-x64-17
- *
- * `net start`/`net stop` require an elevated (Run as Administrator)
- * terminal on Windows. HONEST CAVEAT: the Windows default below has not
- * been executed against a real Windows PostgreSQL service from this
- * codebase's own test runs — only the Linux `service postgresql` path has
- * been verified end-to-end. If the default service name doesn't match
- * your install, override it with the env vars above rather than editing
- * this file.
- */
-function stopPostgres(): void {
-  const cmd = process.env.PG_STOP_CMD
-    ?? (process.platform === 'win32' ? 'net stop postgresql-x64-16' : 'service postgresql stop');
-  execSync(cmd);
-}
-function startPostgres(): void {
-  const cmd = process.env.PG_START_CMD
-    ?? (process.platform === 'win32' ? 'net start postgresql-x64-16' : 'service postgresql start');
-  try {
-    execSync(cmd);
-  } catch {
-    // Discovered on a real Windows run: this test's own body already
-    // restarts Postgres before finishing (line ~127 below), then the
-    // afterEach below calls startPostgres() again unconditionally "to
-    // always leave Postgres running for every other test file" — which is
-    // the right end goal, but on Windows, `net start` on an
-    // ALREADY-running service exits non-zero ("The requested service has
-    // already been started."), unlike Debian's `service ... start`, which
-    // tolerates it. This function's actual contract is "Postgres ends up
-    // running", not "this specific command had to do work" — so a failed
-    // start attempt here is not fatal by itself; waitForPostgresUp() right
-    // after every call site is the real check, and it will correctly
-    // throw if Postgres genuinely isn't up for some other reason.
-  }
-}
 
 describe('Level 7 — Failure injection (real PostgreSQL, real process control)', () => {
   describe('Database unavailable', () => {
