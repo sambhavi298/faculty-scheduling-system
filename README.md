@@ -5,8 +5,9 @@ An Advanced SQL and Modern Database Features project (5th semester, SRM Institut
 ## Architecture overview
 
 ```
-Controller (not yet implemented)
-      ↓  HTTP concerns, request/response, auth extraction, boundary validation
+Controller     — src/controllers/appointment.controller.ts, src/routes/, src/app.ts
+      ↓            HTTP concerns only: request/response shape, status codes,
+      ↓            caller identity (temporary — see docs/DEVELOPMENT_HANDOFF.md)
 Service        — src/services/appointment.service.ts
       ↓            business rules, ownership, state transitions, orchestration
 Repository      — src/repositories/appointment.repository.ts
@@ -27,7 +28,7 @@ Database access is intentionally hybrid: ordinary CRUD can use an ORM, but exclu
 
 ## Current implementation status
 
-Backend/database core: implemented and tested (schema, booking with availability enforcement, double-booking and availability-overlap protection, guarded status transitions, audit logging, views, materialized view, database session timezone pinned to `Asia/Kolkata`, 200 tests actually executed and passing with verified exit codes, fully re-verified on PostgreSQL 16). No HTTP layer, authentication, notification dispatch, or frontend exists yet. See `docs/IMPLEMENTATION_STATUS.md` for the full component-by-component table and `docs/DEVELOPMENT_HANDOFF.md` for exact test results, including the "Timezone: why this exists" section (read that before assuming this app is portable across machines without migration 0008), a real PostgreSQL-deadlock concurrency gap found and fixed through repeated stress-testing, and the current PostgreSQL 18 re-confirmation status.
+Backend/database core: implemented and tested (schema, booking with availability enforcement, double-booking and availability-overlap protection, guarded status transitions, audit logging, views, materialized view, database session timezone pinned to `Asia/Kolkata`). HTTP layer (Phase 2): implemented and tested — an Express + TypeScript Controller/route layer wraps the Appointment Management endpoints from the Level 5 API Contract Table (`POST /api/appointments`, `GET /api/appointments/mine`, `GET /api/appointments/pending`, and the five `PATCH /api/appointments/:id/{approve,reject,cancel,complete,missed}` endpoints), with a temporary header-based caller-identity middleware standing in for real authentication (see `docs/DEVELOPMENT_HANDOFF.md`). Faculty Availability HTTP endpoints, real authentication, notification dispatch, and all three frontends do not exist yet. 211 tests actually executed and passing with verified exit codes on PostgreSQL 16; the pre-existing 200 (backend/database core) were separately re-confirmed on Windows/PostgreSQL 18, but the 23 new tests added this pass (2 unit + 21 HTTP) have NOT yet been independently re-run there. See `docs/IMPLEMENTATION_STATUS.md` for the full component-by-component table and `docs/DEVELOPMENT_HANDOFF.md` for exact test results, including the "Timezone: why this exists" section (read that before assuming this app is portable across machines without migration 0008), a real PostgreSQL-deadlock concurrency gap found and fixed through repeated stress-testing, and the current PostgreSQL 18 re-confirmation status.
 
 ## Local setup
 
@@ -48,12 +49,21 @@ Full details, including the honest note that migrations are currently applied by
 
 ```bash
 cd services/api
-npm test                          # 188 tests: unit, integration, concurrency, security, advanced-SQL
+npm test                          # 211 tests: unit, integration, concurrency, security, advanced-SQL, HTTP
 npm run test:performance          # 5 tests: real measurements against real PostgreSQL
 npm run test:failure-injection    # 7 tests: run in isolation — stops/restarts real PostgreSQL
 ```
 
-All database-dependent behavior (constraints, triggers, transactions, concurrency, stored functions, indexes) is tested against a real PostgreSQL 16 instance, never mocked. `test:failure-injection` has a Windows-specific note (default PostgreSQL service name, admin terminal requirement) in `docs/DEVELOPMENT_HANDOFF.md`.
+All database-dependent behavior (constraints, triggers, transactions, concurrency, stored functions, indexes) is tested against a real PostgreSQL 16 instance, never mocked — including the HTTP layer, whose tests (`tests/http/`) exercise the real Express app via `supertest` against a real Pool, not a mocked Service. `test:failure-injection` has a Windows-specific note (default PostgreSQL service name, admin terminal requirement) in `docs/DEVELOPMENT_HANDOFF.md`.
+
+## Running the API server
+
+```bash
+cd services/api
+npm run dev      # ts-node src/server.ts — reads PORT (default 3000) and the PG* vars from .env
+```
+
+`GET /health` requires no identity headers. Every `/api/*` route requires `X-User-Id` and `X-User-Role` (`STUDENT` or `FACULTY`) headers — a deliberate, temporary stand-in for real authentication (`src/middleware/identify.middleware.ts`), since Authentication is not built yet (see `docs/IMPLEMENTATION_STATUS.md`).
 
 ## Team
 

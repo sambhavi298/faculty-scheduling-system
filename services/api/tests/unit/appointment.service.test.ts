@@ -33,7 +33,8 @@ function row(overrides: Partial<AppointmentRow> = {}): AppointmentRow {
 }
 
 function fakeRepo(): jest.Mocked<Pick<AppointmentRepository,
-  'bookAppointment' | 'findById' | 'approve' | 'reject' | 'cancel' | 'complete' | 'markMissed'>> {
+  'bookAppointment' | 'findById' | 'approve' | 'reject' | 'cancel' | 'complete' | 'markMissed'
+  | 'listForStudent' | 'listPendingForFaculty'>> {
   return {
     bookAppointment: jest.fn(),
     findById: jest.fn(),
@@ -42,6 +43,8 @@ function fakeRepo(): jest.Mocked<Pick<AppointmentRepository,
     cancel: jest.fn(),
     complete: jest.fn(),
     markMissed: jest.fn(),
+    listForStudent: jest.fn(),
+    listPendingForFaculty: jest.fn(),
   };
 }
 
@@ -381,6 +384,34 @@ describe('AppointmentService (unit — mocked AppointmentRepository)', () => {
       const service = new AppointmentService(repo as unknown as AppointmentRepository, new AppointmentStateMachine());
 
       await expect(service.markMissed('1', '200')).rejects.toThrow(AlreadyProcessedError);
+    });
+  });
+
+  describe('listForStudent', () => {
+    it('delegates to the repository and returns its rows unchanged', async () => {
+      const repo = fakeRepo();
+      const rows = [row({ id: '1' }), row({ id: '2', status: 'COMPLETED' })];
+      repo.listForStudent.mockResolvedValueOnce(rows);
+      const service = new AppointmentService(repo as unknown as AppointmentRepository, new AppointmentStateMachine());
+
+      const result = await service.listForStudent('100');
+
+      expect(result).toEqual(rows);
+      expect(repo.listForStudent).toHaveBeenCalledWith('100');
+    });
+  });
+
+  describe('listPendingForFaculty', () => {
+    it('delegates to the repository and returns its rows unchanged', async () => {
+      const repo = fakeRepo();
+      const rows = [row({ id: '3', status: 'PENDING' })];
+      repo.listPendingForFaculty.mockResolvedValueOnce(rows);
+      const service = new AppointmentService(repo as unknown as AppointmentRepository, new AppointmentStateMachine());
+
+      const result = await service.listPendingForFaculty('200');
+
+      expect(result).toEqual(rows);
+      expect(repo.listPendingForFaculty).toHaveBeenCalledWith('200');
     });
   });
 });

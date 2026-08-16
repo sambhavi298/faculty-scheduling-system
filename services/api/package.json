@@ -7,25 +7,32 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "jest --selectProjects unit integration concurrency security advanced-sql --runInBand",
+    "test": "jest --selectProjects unit integration concurrency security advanced-sql http --runInBand",
     "test:unit": "jest --selectProjects unit",
-    "test:db": "jest --selectProjects integration concurrency security advanced-sql --runInBand",
+    "test:db": "jest --selectProjects integration concurrency security advanced-sql http --runInBand",
+    "test:http": "jest --selectProjects http --runInBand --coverage=false",
     "test:performance": "jest --selectProjects performance --runInBand --coverage=false",
-    "test:failure-injection": "jest --selectProjects failure-injection --runInBand --coverage=false"
+    "test:failure-injection": "jest --selectProjects failure-injection --runInBand --coverage=false",
+    "build": "tsc -p tsconfig.json",
+    "dev": "ts-node src/server.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "express": "^5.2.1",
     "pg": "^8.23.0",
     "uuid": "^14.0.1"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.2.0",
     "@types/pg": "^8.21.0",
+    "@types/supertest": "^7.2.1",
     "@types/uuid": "^10.0.0",
     "jest": "^30.4.2",
+    "supertest": "^7.2.2",
     "ts-jest": "^29.4.12",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.3"

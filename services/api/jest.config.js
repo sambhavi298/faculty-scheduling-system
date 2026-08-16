@@ -59,6 +59,13 @@ module.exports = {
       testTimeout: 30000
     },
     {
+      displayName: 'http',
+      preset: 'ts-jest',
+      testEnvironment: 'node',
+      testMatch: ['<rootDir>/tests/http/**/*.test.ts'],
+      testTimeout: 20000
+    },
+    {
       displayName: 'performance',
       preset: 'ts-jest',
       testEnvironment: 'node',

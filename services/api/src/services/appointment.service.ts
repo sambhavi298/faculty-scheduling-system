@@ -105,6 +105,25 @@ export class AppointmentService {
     return this.applyGuardedTransition(existing, 'MISSED', () => this.repo.markMissed(id, facultyId));
   }
 
+  /**
+   * Thin passthroughs for the two read-only listing endpoints (Level 5,
+   * Section 11: `GET /api/appointments/mine`, `GET /api/appointments/pending`).
+   * There is no business rule to enforce here — a student may always see
+   * their own appointments, a faculty member their own pending requests —
+   * so this is intentionally a one-line delegation to the Repository. It
+   * exists on the Service (rather than having the Controller call the
+   * Repository directly) purely to keep the Controller -> Service ->
+   * Repository layering from the architecture diagram uniform across every
+   * endpoint, not because there's hidden logic here.
+   */
+  async listForStudent(studentId: string): Promise<AppointmentRow[]> {
+    return this.repo.listForStudent(studentId);
+  }
+
+  async listPendingForFaculty(facultyId: string): Promise<AppointmentRow[]> {
+    return this.repo.listPendingForFaculty(facultyId);
+  }
+
   /** Shared by approve/reject/cancel: idempotent no-op, then state-machine check, then guarded write. */
   private async applyGuardedTransition(
     existing: AppointmentRow,
