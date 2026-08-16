@@ -1,0 +1,42 @@
+-- Migration 0008 — pin the database session timezone to Asia/Kolkata.
+--
+-- PROBLEM: is_faculty_available(), book_appointment(), and
+-- get_available_slots() (migrations 0003, 0005, 0006) all combine a DATE
+-- column with a TIME column to produce a TIMESTAMPTZ (e.g.
+-- p_date + fa.start_time), and convert a TIMESTAMPTZ back to a local
+-- TIME/DATE via ::time / ::date casts. Both directions of that conversion
+-- are resolved using the current session's `timezone` GUC, which
+-- PostgreSQL defaults to the host machine's own local timezone at initdb
+-- time unless a database- or role-level override exists. This was flagged
+-- as a known, deferred simplification in the Level 5 design doc ("DATE +
+-- TIME composition uses the session timezone; a full implementation-level
+-- treatment belongs at Level 6") and was never actually closed. It
+-- surfaced concretely when the same code, same data, and same migrations
+-- were run against two different PostgreSQL installs (one defaulting to
+-- Etc/UTC, one defaulting to Asia/Kolkata) and produced different
+-- real-world availability results — e.g. a slot logically inside a
+-- 10:00-11:00 teaching block was reported bookable under one host default
+-- and blocked under the other.
+--
+-- FIX: pin the timezone at the database level, so every session
+-- connecting to this database gets the same interpretation of
+-- TIME/DATE <-> TIMESTAMPTZ regardless of the host machine's own
+-- timezone. Asia/Kolkata (IST, UTC+5:30) is chosen — not UTC — because
+-- this is a single-campus system (SRM Institute, India): faculty
+-- teaching hours, availability windows, and batch schedules are always
+-- meant to represent real IST wall-clock hours, so the database's
+-- notion of "local time" should match the campus's actual timezone
+-- rather than push that translation onto every future caller.
+--
+-- SCOPE NOTE: this is a database-level configuration change, not a new
+-- table/constraint/function — it does not alter any existing schema
+-- object. It only changes how session-dependent TIME/TIMESTAMPTZ
+-- conversions resolve.
+--
+-- CAVEAT: ALTER DATABASE ... SET only affects *new* sessions connecting
+-- to this database after this migration runs. A connection pool that was
+-- already open when this migration is applied keeps whatever timezone it
+-- negotiated at connect time until it reconnects. Restart the
+-- application / test runner after applying this migration.
+
+ALTER DATABASE faculty_scheduling SET timezone TO 'Asia/Kolkata';

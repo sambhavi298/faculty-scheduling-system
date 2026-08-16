@@ -1,0 +1,19 @@
+# Implementation Status
+
+Faculty Availability & Intelligent Appointment Scheduling System — status as of this backend milestone handoff. A component is only marked Complete if the code exists AND tests for it were actually executed and passed. See `docs/DEVELOPMENT_HANDOFF.md` for exact test commands and results.
+
+| Component | Status | Notes |
+|---|---|---|
+| Database schema | Complete | Migrations 0001–0008 applied and verified from a clean database (see handoff doc). Core tables, `appointments` exclusion constraint, functions/triggers, views, materialized view, booking-time availability enforcement, `faculty_availability` overlap protection, database session timezone pinned to `Asia/Kolkata` (migration 0008 — see handoff doc's "Timezone: why this exists"). |
+| AppointmentRepository | Complete | Booking, idempotent retries, guarded transitions (approve/reject/cancel/complete/markMissed), error mapping. 100% statement/line/function coverage, 94.73% branch coverage — one untested branch (`appointment.repository.ts:76`): a conflict error with a `clientRequestId` present, but the idempotency lookup finding no matching row. Pre-existing, not introduced by this milestone. |
+| AppointmentService | Complete | Ownership checks, idempotent no-ops, state-machine validation, orchestration for all six transitions. 100% coverage across statements/branches/functions/lines. |
+| State Machine | Complete | Pure domain object, mirrors the database trigger's transition rules exactly. 100% coverage. |
+| Availability (faculty_availability, teaching schedule, leave/blocked exceptions) | Partial | Database-level computation (`is_faculty_available()`, `get_available_slots()`) and overlap protection are complete and tested. No application-layer Repository/Service yet — faculty cannot manage their own availability through any code path yet (HTTP layer doesn't exist). |
+| Notifications | Not started | `notifications` table exists in the schema. No `NotificationService`, nothing writes to the table, nothing dispatches an email/push/websocket notification. |
+| Controllers / API | Not started | No HTTP layer. Service/Repository are currently only exercised from tests. |
+| Authentication | Not started | No login, session, or token verification. No middleware. Ownership checks in `AppointmentService` take a caller-supplied id on faith — there is nothing yet verifying that id against an authenticated identity. |
+| Student Frontend | Not started | Assigned to Rekha — see `docs/GITHUB_ISSUES.md`. |
+| Faculty Frontend | Not started | Assigned to Sankalp — see `docs/GITHUB_ISSUES.md`. |
+| Admin Frontend | Not started | Assigned to Mohammed Izhaan — see `docs/GITHUB_ISSUES.md`. |
+| Testing | Substantial | 200 tests actually executed and passing, with genuinely successful process exit codes verified (not just printed pass counts): 188 (unit/integration/concurrency/security/advanced-SQL, `npm test`, stable across 3 consecutive runs) + 5 (performance, real measurements) + 7 (failure injection, real PostgreSQL stop/restart, run in isolation). Fully verified against a database session pinned to `Asia/Kolkata` (migration 0008) on PostgreSQL 16 — see handoff doc's "Expected test result" for the full history, including a real concurrency-correctness gap (PostgreSQL deadlock outcomes, SQLSTATE 40P01, not previously mapped to SlotConflictError) found by deliberately stress-testing the flagship double-booking test 15+ times rather than trusting one clean run, and an index-choice test-design bug found from an actual PostgreSQL 18 failure. Both PG18-sourced bugs are fixed but NOT yet independently re-confirmed on PostgreSQL 18 — see handoff doc. No HTTP-layer or frontend tests exist yet, since neither exists yet. |
+| Deployment | Not started | No deployment configuration, no CI pipeline, no hosting setup. Out of scope for this milestone. |
