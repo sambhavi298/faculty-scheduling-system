@@ -1,0 +1,19 @@
+{
+  "name": "faculty-scheduling",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:student": "npm run dev -w apps/student",
+    "dev:faculty": "npm run dev -w apps/faculty",
+    "dev:admin": "npm run dev -w apps/admin",
+    "build": "npm run build -w apps/student && npm run build -w apps/faculty && npm run build -w apps/admin",
+    "build:student": "npm run build -w apps/student",
+    "build:faculty": "npm run build -w apps/faculty",
+    "build:admin": "npm run build -w apps/admin",
+    "typecheck": "npm run typecheck -w apps/student && npm run typecheck -w apps/faculty && npm run typecheck -w apps/admin"
+  }
+}

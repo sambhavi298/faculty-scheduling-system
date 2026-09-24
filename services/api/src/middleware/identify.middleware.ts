@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import { getJwtSecret } from '../auth/jwt-secret';
 
-export type UserRole = 'STUDENT' | 'FACULTY';
+export type UserRole = 'STUDENT' | 'FACULTY' | 'ADMIN';
 
 export interface AuthenticatedUser {
   id: string;
@@ -16,48 +18,59 @@ declare global {
   }
 }
 
-const VALID_ROLES: ReadonlySet<string> = new Set<UserRole>(['STUDENT', 'FACULTY']);
+const VALID_ROLES: ReadonlySet<string> = new Set<UserRole>(['STUDENT', 'FACULTY', 'ADMIN']);
+
+interface DecodedToken {
+  sub?: unknown;
+  role?: unknown;
+}
 
 /**
- * TEMPORARY stand-in for real authentication.
+ * Real authentication, replacing the temporary X-User-Id/X-User-Role
+ * header-trust stand-in this file used to be. Exactly as promised in this
+ * file's own previous comment ("only this file's implementation needs to
+ * change") — every downstream Controller still reads only `req.user.{id,
+ * role}` and needed zero changes to adopt this.
  *
- * `docs/IMPLEMENTATION_STATUS.md` lists Authentication as "Not started" —
- * this HTTP layer is being built before that work. Rather than block Phase
- * 2 on Phase 3, this middleware reads caller identity from headers
- * (`X-User-Id`, `X-User-Role`) supplied directly by the client, with NO
- * cryptographic verification that the caller actually is who they claim.
- *
- * This is a deliberate, narrow scope decision, not a security regression:
- * AppointmentService's ownership checks (`findOwnedByFaculty`, the
- * student/faculty check in `cancel()`) already trusted a caller-supplied id
- * "on faith" before this Controller layer existed — this middleware doesn't
- * make that trust boundary any weaker, it just gives every Controller a
- * single, consistent place to read `req.user` from, and turns "no identity
- * supplied at all" into a clean 401 instead of `undefined` reaching the
- * Service layer.
- *
- * When real authentication (session or token based) is built, only this
- * file's *implementation* needs to change — verify the credential, look up
- * the real user, and populate `req.user` from that instead of from raw
- * headers. Every Controller downstream depends only on `req.user` existing
- * and having `{ id, role }` on it, never on how it got there.
+ * The caller's identity now comes from a verified JWT (`Authorization:
+ * Bearer <token>`), issued by AuthService.login() (Level 2's chosen design:
+ * self-issued JWT with role claims, bcrypt-hashed passwords). A missing,
+ * malformed, expired, or wrong-signature token all collapse to the same
+ * clean 401 — a client has no way to distinguish WHY a token was rejected
+ * from the response alone, which is the correct behavior for an auth
+ * boundary (revealing "expired" vs. "wrong signature" vs. "not even a
+ * JWT" would leak information useful to an attacker for no benefit to a
+ * legitimate client, who should simply log in again either way).
  */
 export function identify(req: Request, res: Response, next: NextFunction): void {
-  const id = req.header('X-User-Id');
-  const role = req.header('X-User-Role');
+  const header = req.header('Authorization');
+  const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : null;
 
-  if (!id || !role) {
+  if (!token) {
     res.status(401).json({
       error: 'UNAUTHENTICATED',
-      message: 'X-User-Id and X-User-Role headers are required (temporary stand-in for authentication — see identify.middleware.ts).',
+      message: 'An Authorization: Bearer <token> header is required. Obtain a token from POST /api/auth/login.',
     });
     return;
   }
 
-  if (!VALID_ROLES.has(role)) {
+  let decoded: DecodedToken;
+  try {
+    decoded = jwt.verify(token, getJwtSecret()) as DecodedToken;
+  } catch {
     res.status(401).json({
       error: 'UNAUTHENTICATED',
-      message: `X-User-Role must be one of: ${Array.from(VALID_ROLES).join(', ')}`,
+      message: 'The provided token is invalid or expired. Obtain a new token from POST /api/auth/login.',
+    });
+    return;
+  }
+
+  const id = decoded.sub;
+  const role = decoded.role;
+  if (typeof id !== 'string' || typeof role !== 'string' || !VALID_ROLES.has(role)) {
+    res.status(401).json({
+      error: 'UNAUTHENTICATED',
+      message: 'The provided token does not carry a valid identity.',
     });
     return;
   }
@@ -66,7 +79,7 @@ export function identify(req: Request, res: Response, next: NextFunction): void 
   next();
 }
 
-/** Route-level authorization: the endpoint's contract (Level 5 API Contract Table) restricts it to one or more roles. */
+/** Route-level authorization: the endpoint's contract (Level 5 API Contract Table) restricts it to one or more roles. Unchanged by the move to real authentication — it only ever reads req.user, never how req.user was populated. */
 export function requireRole(...roles: UserRole[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user || !roles.includes(req.user.role)) {

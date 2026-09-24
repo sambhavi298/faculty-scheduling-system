@@ -198,4 +198,24 @@ export class AppointmentRepository {
     );
     return result.rows;
   }
+
+  /**
+   * Backs `GET /api/appointments/mine-as-faculty` (closes the "faculty-scoped
+   * listing beyond pending" gap, docs/GITHUB_ISSUES.md). Reads directly from
+   * `appointments`, unlike listPendingForFaculty (which reads the
+   * PENDING-only `faculty_pending_requests` view) — every status is a valid
+   * result here, so the view's narrower WHERE clause doesn't apply.
+   * `appointments_faculty_status_idx` (migrations/sql/0002) serves this
+   * exact `(faculty_id, status)` shape when a status filter is given, and
+   * the plain `(faculty_id)` case still uses it as a leading-column match.
+   */
+  async listAllForFaculty(facultyId: string, status?: AppointmentStatus): Promise<AppointmentRow[]> {
+    const result = await this.db.query<AppointmentRow>(
+      `SELECT * FROM appointments
+        WHERE faculty_id = $1 AND ($2::appointment_status IS NULL OR status = $2)
+        ORDER BY requested_at DESC`,
+      [facultyId, status ?? null]
+    );
+    return result.rows;
+  }
 }

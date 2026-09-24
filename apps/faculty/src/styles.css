@@ -1,0 +1,144 @@
+/*
+ * App-local styles for the faculty frontend only. The shared design system
+ * (packages/ui) covers every generic component (buttons, cards, fields,
+ * tables, states, toasts, the app shell, etc.) — this file only adds the
+ * handful of layout bits that are specific to this app's screens and aren't
+ * generic enough to belong in the shared package: the login screen, and the
+ * appointment "request card" layout used on Pending/Upcoming/History.
+ */
+
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-workspace);
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+}
+
+.login-card__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.login-card__brand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary-tint);
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.login-card__brand-title {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.login-card__brand-subtitle {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.login-card__notice {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  margin-bottom: 18px;
+}
+
+.login-card__notice code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.request-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.request-card__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.request-card__who {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.request-card__slot {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+
+.request-card__reason-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.request-card__reason {
+  font-size: 13.5px;
+  color: var(--text-primary);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+}
+
+.request-card__notes {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 8px;
+}
+
+.request-card__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.request-card__error {
+  color: var(--accent-danger);
+  font-size: 12.5px;
+  margin-bottom: 8px;
+}
+
+.section-heading {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin: 4px 0 12px;
+}

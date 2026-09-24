@@ -5,6 +5,8 @@ import { SlotConflictError } from '../errors/slot-conflict.error';
 import { FacultyUnavailableError } from '../errors/faculty-unavailable.error';
 import { AlreadyProcessedError } from '../errors/already-processed.error';
 import { InvalidTransitionError } from '../errors/invalid-transition.error';
+import { AvailabilityOverlapError } from '../errors/availability-overlap.error';
+import { UnauthenticatedError } from '../errors/unauthenticated.error';
 
 /**
  * Central mapping from domain errors (thrown by AppointmentService /
@@ -40,6 +42,14 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   }
   if (err instanceof InvalidTransitionError) {
     res.status(409).json({ error: 'INVALID_TRANSITION', message: err.message });
+    return;
+  }
+  if (err instanceof AvailabilityOverlapError) {
+    res.status(409).json({ error: 'AVAILABILITY_OVERLAP', message: err.message });
+    return;
+  }
+  if (err instanceof UnauthenticatedError) {
+    res.status(401).json({ error: 'UNAUTHENTICATED', message: err.message });
     return;
   }
 

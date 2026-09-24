@@ -1,0 +1,14 @@
+-- Real authentication pass (docs/GITHUB_ISSUES.md's "Real authentication"
+-- backend dependency): Level 2's chosen design is bcrypt-hashed passwords.
+-- Application code (src/services/auth.service.ts) uses the `bcrypt` npm
+-- package to VERIFY passwords at login time — that choice is unaffected by
+-- this migration. This migration exists only so seed_test_data.sql can
+-- generate real bcrypt-compatible hashes for its fixture users entirely in
+-- SQL (via pgcrypto's crypt()/gen_salt('bf', ...)), rather than requiring a
+-- separate Node script to run between "apply migrations" and "load seed
+-- data" just to hash a handful of known test passwords. pgcrypto's
+-- blowfish-mode crypt() and the `bcrypt` npm package implement the same
+-- algorithm and produce mutually-verifiable hashes (both are the standard
+-- $2a$/$2b$ bcrypt format) — this is not a second, different hashing scheme,
+-- just a second implementation of the same one, used only for seeding.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;

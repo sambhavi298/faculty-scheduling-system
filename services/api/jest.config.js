@@ -7,7 +7,17 @@ module.exports = {
   collectCoverageFrom: [
     'src/services/appointment.service.ts',
     'src/repositories/appointment.repository.ts',
-    'src/domain/appointment-state-machine.ts'
+    'src/domain/appointment-state-machine.ts',
+    'src/services/faculty.service.ts',
+    'src/repositories/faculty.repository.ts',
+    'src/services/notification.service.ts',
+    'src/repositories/notification.repository.ts',
+    'src/services/faculty-availability.service.ts',
+    'src/repositories/faculty-availability.repository.ts',
+    'src/services/auth.service.ts',
+    'src/repositories/auth.repository.ts',
+    'src/services/admin.service.ts',
+    'src/repositories/admin.repository.ts'
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'text-summary', 'json-summary'],
@@ -19,6 +29,36 @@ module.exports = {
       lines: 100
     },
     './src/domain/appointment-state-machine.ts': {
+      statements: 100,
+      branches: 100,
+      functions: 100,
+      lines: 100
+    },
+    './src/services/faculty.service.ts': {
+      statements: 100,
+      branches: 100,
+      functions: 100,
+      lines: 100
+    },
+    './src/services/notification.service.ts': {
+      statements: 100,
+      branches: 100,
+      functions: 100,
+      lines: 100
+    },
+    './src/services/faculty-availability.service.ts': {
+      statements: 100,
+      branches: 100,
+      functions: 100,
+      lines: 100
+    },
+    './src/services/auth.service.ts': {
+      statements: 100,
+      branches: 100,
+      functions: 100,
+      lines: 100
+    },
+    './src/services/admin.service.ts': {
       statements: 100,
       branches: 100,
       functions: 100,

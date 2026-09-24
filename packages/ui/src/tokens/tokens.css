@@ -1,0 +1,126 @@
+/*
+ * Shared design tokens for all three frontends (student, faculty, admin).
+ * Palette adapted from the admin submission's token set (izhaan_v3), which
+ * was the most complete and consistent of the three prior submissions —
+ * unified here into one system so all three apps render as one product,
+ * only distinguished by a per-app accent tint.
+ */
+
+:root {
+  --bg-workspace: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-subtle: #f1f5f9;
+  --border-color: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+
+  --sidebar-bg: #0b0f1a;
+  --sidebar-border: #1e293b;
+  --sidebar-text: #94a3b8;
+  --sidebar-text-active: #ffffff;
+  --sidebar-item-hover: rgba(255, 255, 255, 0.06);
+
+  --header-bg: #ffffff;
+  --header-border: #e2e8f0;
+
+  /* Per-app accent — overridden by each app's own root class (see App.tsx). */
+  --accent-primary: #4f46e5;
+  --accent-primary-hover: #4338ca;
+  --accent-primary-tint: rgba(79, 70, 229, 0.08);
+
+  --accent-secondary: #0284c7;
+  --accent-success: #16a34a;
+  --accent-success-tint: #e7f4ec;
+  --accent-warning: #b65c00;
+  --accent-warning-tint: #fbeee0;
+  --accent-danger: #dc2626;
+  --accent-danger-tint: #fbeaea;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Per-app accents. Applied via a class on <html> (see each app's main.tsx). */
+.theme-student {
+  --accent-primary: #2563eb;
+  --accent-primary-hover: #1d4ed8;
+  --accent-primary-tint: rgba(37, 99, 235, 0.08);
+}
+.theme-faculty {
+  --accent-primary: #4f46e5;
+  --accent-primary-hover: #4338ca;
+  --accent-primary-tint: rgba(79, 70, 229, 0.08);
+}
+.theme-admin {
+  --accent-primary: #0f766e;
+  --accent-primary-hover: #0d5f59;
+  --accent-primary-tint: rgba(15, 118, 110, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--sans);
+  background-color: var(--bg-workspace);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+  width: 100%;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

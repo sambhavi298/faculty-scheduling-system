@@ -4,6 +4,7 @@ import { TimeRange } from '../domain/time-range';
 import { NotFoundError } from '../errors/not-found.error';
 import { AlreadyProcessedError } from '../errors/already-processed.error';
 import { ValidationError } from '../errors/validation.error';
+import { NotificationService, NotificationType } from './notification.service';
 
 const MIN_REASON_LENGTH = 5;
 const MAX_REASON_LENGTH = 1000;
@@ -37,9 +38,19 @@ export interface RequestAppointmentResult {
  * wasted round trip avoided, it does not replace the database's guarantee.
  */
 export class AppointmentService {
+  /**
+   * `notifications` is deliberately optional. Every existing call site that
+   * constructs this class with just (repo, stateMachine) keeps working
+   * unchanged — notifications are additive, best-effort behavior (Level 5,
+   * Section 1: "triggering the (deliberately non-atomic) notification step
+   * after a successful write"), never a precondition for the appointment
+   * action itself succeeding. server.ts wires a real NotificationService in
+   * production; tests that aren't about notifications simply omit it.
+   */
   constructor(
     private readonly repo: AppointmentRepository,
-    private readonly stateMachine: AppointmentStateMachine
+    private readonly stateMachine: AppointmentStateMachine,
+    private readonly notifications?: NotificationService
   ) {}
 
   async requestAppointment(params: RequestAppointmentParams): Promise<RequestAppointmentResult> {
@@ -60,17 +71,29 @@ export class AppointmentService {
       clientRequestId: params.clientRequestId,
     });
 
+    // Only a genuinely new booking should notify the faculty member — an
+    // idempotent replay of an already-known request (wasNewlyCreated: false)
+    // must not notify a second time (Level 5, Section 11's idempotency
+    // contract applies to side effects too, not just the row returned).
+    if (wasNewlyCreated) {
+      this.notifyBestEffort(row.faculty_id, 'APPOINTMENT_REQUESTED', { appointmentId: row.id, reason: row.reason });
+    }
+
     return { appointment: row, wasNewlyCreated };
   }
 
   async approve(id: string, facultyId: string): Promise<AppointmentRow> {
     const existing = await this.findOwnedByFaculty(id, facultyId);
-    return this.applyGuardedTransition(existing, 'APPROVED', () => this.repo.approve(id, facultyId));
+    return this.applyGuardedTransition(existing, 'APPROVED', () => this.repo.approve(id, facultyId), (updated) =>
+      this.notifyBestEffort(updated.student_id, 'APPOINTMENT_APPROVED', { appointmentId: updated.id })
+    );
   }
 
   async reject(id: string, facultyId: string): Promise<AppointmentRow> {
     const existing = await this.findOwnedByFaculty(id, facultyId);
-    return this.applyGuardedTransition(existing, 'REJECTED', () => this.repo.reject(id, facultyId));
+    return this.applyGuardedTransition(existing, 'REJECTED', () => this.repo.reject(id, facultyId), (updated) =>
+      this.notifyBestEffort(updated.student_id, 'APPOINTMENT_REJECTED', { appointmentId: updated.id })
+    );
   }
 
   async cancel(id: string, actorId: string): Promise<AppointmentRow> {
@@ -78,7 +101,12 @@ export class AppointmentService {
     if (!existing || (existing.student_id !== actorId && existing.faculty_id !== actorId)) {
       throw new NotFoundError();
     }
-    return this.applyGuardedTransition(existing, 'CANCELLED', () => this.repo.cancel(id, actorId));
+    // Notify whichever party did NOT do the cancelling — the actor already
+    // knows they just cancelled it.
+    const otherParty = actorId === existing.student_id ? existing.faculty_id : existing.student_id;
+    return this.applyGuardedTransition(existing, 'CANCELLED', () => this.repo.cancel(id, actorId), (updated) =>
+      this.notifyBestEffort(otherParty, 'APPOINTMENT_CANCELLED', { appointmentId: updated.id })
+    );
   }
 
   /**
@@ -97,12 +125,16 @@ export class AppointmentService {
    */
   async complete(id: string, facultyId: string, notes?: string): Promise<AppointmentRow> {
     const existing = await this.findOwnedByFaculty(id, facultyId);
-    return this.applyGuardedTransition(existing, 'COMPLETED', () => this.repo.complete(id, facultyId, notes));
+    return this.applyGuardedTransition(existing, 'COMPLETED', () => this.repo.complete(id, facultyId, notes), (updated) =>
+      this.notifyBestEffort(updated.student_id, 'APPOINTMENT_COMPLETED', { appointmentId: updated.id })
+    );
   }
 
   async markMissed(id: string, facultyId: string): Promise<AppointmentRow> {
     const existing = await this.findOwnedByFaculty(id, facultyId);
-    return this.applyGuardedTransition(existing, 'MISSED', () => this.repo.markMissed(id, facultyId));
+    return this.applyGuardedTransition(existing, 'MISSED', () => this.repo.markMissed(id, facultyId), (updated) =>
+      this.notifyBestEffort(updated.student_id, 'APPOINTMENT_MISSED', { appointmentId: updated.id })
+    );
   }
 
   /**
@@ -124,11 +156,40 @@ export class AppointmentService {
     return this.repo.listPendingForFaculty(facultyId);
   }
 
-  /** Shared by approve/reject/cancel: idempotent no-op, then state-machine check, then guarded write. */
+  /**
+   * Backs `GET /api/appointments/mine-as-faculty` — closes the documented
+   * gap (docs/GITHUB_ISSUES.md, "Upcoming appointments"/"Appointment
+   * history") that `listPendingForFaculty` only ever returns PENDING rows,
+   * so a faculty member had no real way to see their own
+   * APPROVED/COMPLETED/MISSED/REJECTED/CANCELLED history without a
+   * device-local cache. `statusFilter` is validated against the real
+   * AppointmentStatus enum here (not left to the database to reject) so an
+   * unrecognized value fails fast with a clear 400 rather than silently
+   * returning zero rows or a raw SQL error.
+   */
+  async listAllForFaculty(facultyId: string, statusFilter?: string): Promise<AppointmentRow[]> {
+    if (statusFilter !== undefined && !AppointmentService.VALID_STATUSES.has(statusFilter as AppointmentStatus)) {
+      throw new ValidationError(`status must be one of: ${Array.from(AppointmentService.VALID_STATUSES).join(', ')}`);
+    }
+    return this.repo.listAllForFaculty(facultyId, statusFilter as AppointmentStatus | undefined);
+  }
+
+  private static readonly VALID_STATUSES: ReadonlySet<AppointmentStatus> = new Set<AppointmentStatus>([
+    'PENDING',
+    'APPROVED',
+    'REJECTED',
+    'CANCELLED',
+    'COMPLETED',
+    'MISSED',
+    'EXPIRED',
+  ]);
+
+  /** Shared by approve/reject/cancel/complete/markMissed: idempotent no-op, then state-machine check, then guarded write, then (only on a real transition) a best-effort notification. */
   private async applyGuardedTransition(
     existing: AppointmentRow,
     target: AppointmentStatus,
-    write: () => Promise<AppointmentRow | null>
+    write: () => Promise<AppointmentRow | null>,
+    afterTransition?: (updated: AppointmentRow) => void
   ): Promise<AppointmentRow> {
     if (existing.status === target) {
       return existing; // idempotent no-op — see Level 5, Section 11 API contract
@@ -144,6 +205,9 @@ export class AppointmentService {
       // actually caught this; we just report it clearly.
       throw new AlreadyProcessedError();
     }
+    if (afterTransition) {
+      afterTransition(updated);
+    }
     return updated;
   }
 
@@ -153,5 +217,23 @@ export class AppointmentService {
       throw new NotFoundError();
     }
     return existing;
+  }
+
+  /**
+   * Notification dispatch is deliberately fire-and-forget from the caller's
+   * perspective (Level 5, Section 1: a separate, non-atomic step after a
+   * successful write) — not awaited by any transition method above, and any
+   * failure is swallowed here rather than propagated, because a failed
+   * notification write must never turn an already-successful appointment
+   * action into an error response. `notifications` being unset (most unit
+   * tests) is itself the common case, not an error condition.
+   */
+  private notifyBestEffort(recipientId: string, type: NotificationType, payload: { appointmentId: string; reason?: string }): void {
+    if (!this.notifications) {
+      return;
+    }
+    this.notifications.notify(recipientId, type, payload).catch(() => {
+      // Best-effort — see method doc comment above.
+    });
   }
 }

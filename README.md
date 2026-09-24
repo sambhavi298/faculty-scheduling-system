@@ -51,7 +51,7 @@ Full details, including the honest note that migrations are currently applied by
 cd services/api
 npm test                          # 211 tests: unit, integration, concurrency, security, advanced-SQL, HTTP
 npm run test:performance          # 5 tests: real measurements against real PostgreSQL
-npm run test:failure-injection    # 7 tests: run in isolation — stops/restarts real PostgreSQL
+npm run test:failure-injection    # 20 tests: run in isolation — stops/restarts real PostgreSQL
 ```
 
 All database-dependent behavior (constraints, triggers, transactions, concurrency, stored functions, indexes) is tested against a real PostgreSQL 16 instance, never mocked — including the HTTP layer, whose tests (`tests/http/`) exercise the real Express app via `supertest` against a real Pool, not a mocked Service. `test:failure-injection` has a Windows-specific note (default PostgreSQL service name, admin terminal requirement) in `docs/DEVELOPMENT_HANDOFF.md`.

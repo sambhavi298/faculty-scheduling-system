@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import jwt from 'jsonwebtoken';
 import { Pool } from 'pg';
 import request from 'supertest';
 import { Application } from 'express';
@@ -6,17 +7,33 @@ import { createPool } from '../../src/db/client';
 import { AppointmentRepository } from '../../src/repositories/appointment.repository';
 import { AppointmentService } from '../../src/services/appointment.service';
 import { AppointmentStateMachine } from '../../src/domain/appointment-state-machine';
+import { FacultyRepository } from '../../src/repositories/faculty.repository';
+import { FacultyService } from '../../src/services/faculty.service';
+import { NotificationRepository } from '../../src/repositories/notification.repository';
+import { NotificationService } from '../../src/services/notification.service';
+import { FacultyAvailabilityRepository } from '../../src/repositories/faculty-availability.repository';
+import { FacultyAvailabilityService } from '../../src/services/faculty-availability.service';
+import { AuthRepository } from '../../src/repositories/auth.repository';
+import { AuthService } from '../../src/services/auth.service';
+import { AdminRepository } from '../../src/repositories/admin.repository';
+import { AdminService } from '../../src/services/admin.service';
+import { getJwtSecret } from '../../src/auth/jwt-secret';
 import { createApp } from '../../src/app';
 
 /**
- * HTTP-layer tests (Phase 2). These exercise the real Express app —
- * routing, the `identify`/`requireRole` middleware, Controllers, and
- * `errorHandler` — wired to a real AppointmentService backed by a real
- * PostgreSQL Pool, matching this project's existing convention (see
- * tests/integration/*) of never mocking the database. What's new here,
- * versus the Service-level integration tests, is proving the HTTP
- * boundary itself: status codes, header-based identity, and JSON shapes
- * match the Level 5 API Contract Table.
+ * HTTP-layer tests (Phase 2, extended for the real-authentication pass).
+ * These exercise the real Express app — routing, the real `identify`/
+ * `requireRole` middleware (now verifying real JWTs, not trusting
+ * X-User-Id/X-User-Role headers), Controllers, and `errorHandler` — wired
+ * to a real AppointmentService backed by a real PostgreSQL Pool, matching
+ * this project's existing convention (see tests/integration/*) of never
+ * mocking the database.
+ *
+ * `bearer()` signs a real JWT with the SAME secret identify.middleware.ts
+ * verifies against (getJwtSecret()) — this exercises the real verification
+ * code path exactly as a token from POST /api/auth/login would, without
+ * paying a real bcrypt round trip on every single request in this file
+ * (AuthService itself has its own dedicated tests for the login endpoint).
  *
  * Seed data (migrations/sql/seed_test_data.sql +
  * seed_availability_test_data.sql): students 100/101, faculty 200/201.
@@ -26,10 +43,15 @@ import { createApp } from '../../src/app';
  * block and the 2026-08-31 leave day used by the availability tests.
  */
 
-const STUDENT = { 'X-User-Id': '100', 'X-User-Role': 'STUDENT' };
-const OTHER_STUDENT = { 'X-User-Id': '101', 'X-User-Role': 'STUDENT' };
-const FACULTY = { 'X-User-Id': '200', 'X-User-Role': 'FACULTY' };
-const OTHER_FACULTY = { 'X-User-Id': '201', 'X-User-Role': 'FACULTY' };
+function bearer(id: string, role: 'STUDENT' | 'FACULTY' | 'ADMIN'): { Authorization: string } {
+  const token = jwt.sign({ sub: id, role }, getJwtSecret(), { expiresIn: '1h' });
+  return { Authorization: `Bearer ${token}` };
+}
+
+const STUDENT = bearer('100', 'STUDENT');
+const OTHER_STUDENT = bearer('101', 'STUDENT');
+const FACULTY = bearer('200', 'FACULTY');
+const OTHER_FACULTY = bearer('201', 'FACULTY');
 
 function slotBody(overrides: Partial<{ facultyId: string; slotStart: string; slotEnd: string; reason: string; clientRequestId: string }> = {}) {
   return {
@@ -48,8 +70,13 @@ describe('Appointment HTTP layer (integration — real Express app + real Postgr
   beforeAll(() => {
     pool = createPool();
     const repo = new AppointmentRepository(pool);
-    const service = new AppointmentService(repo, new AppointmentStateMachine());
-    app = createApp(service);
+    const notificationService = new NotificationService(new NotificationRepository(pool));
+    const service = new AppointmentService(repo, new AppointmentStateMachine(), notificationService);
+    const facultyService = new FacultyService(new FacultyRepository(pool));
+    const facultyAvailabilityService = new FacultyAvailabilityService(new FacultyAvailabilityRepository(pool));
+    const authService = new AuthService(new AuthRepository(pool), getJwtSecret());
+    const adminService = new AdminService(new AdminRepository(pool));
+    app = createApp({ appointmentService: service, facultyService, notificationService, facultyAvailabilityService, authService, adminService });
   });
 
   beforeEach(async () => {
@@ -69,17 +96,33 @@ describe('Appointment HTTP layer (integration — real Express app + real Postgr
   });
 
   describe('identify middleware', () => {
-    it('returns 401 when no identity headers are supplied', async () => {
+    it('returns 401 when no Authorization header is supplied', async () => {
       const res = await request(app).get('/api/appointments/mine');
       expect(res.status).toBe(401);
       expect(res.body.error).toBe('UNAUTHENTICATED');
     });
 
-    it('returns 401 when X-User-Role is not a recognized role', async () => {
-      const res = await request(app)
-        .get('/api/appointments/mine')
-        .set('X-User-Id', '100')
-        .set('X-User-Role', 'ADMIN');
+    it('returns 401 when the Authorization header is not a Bearer token', async () => {
+      const res = await request(app).get('/api/appointments/mine').set('Authorization', 'Basic notabearertoken');
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('UNAUTHENTICATED');
+    });
+
+    it('returns 401 for a malformed/invalid token', async () => {
+      const res = await request(app).get('/api/appointments/mine').set('Authorization', 'Bearer not.a.real.jwt');
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('UNAUTHENTICATED');
+    });
+
+    it('returns 401 for a token signed with the wrong secret', async () => {
+      const forged = jwt.sign({ sub: '100', role: 'STUDENT' }, 'wrong-secret');
+      const res = await request(app).get('/api/appointments/mine').set('Authorization', `Bearer ${forged}`);
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 401 for an expired token', async () => {
+      const expired = jwt.sign({ sub: '100', role: 'STUDENT' }, getJwtSecret(), { expiresIn: -1 });
+      const res = await request(app).get('/api/appointments/mine').set('Authorization', `Bearer ${expired}`);
       expect(res.status).toBe(401);
     });
   });
@@ -130,6 +173,16 @@ describe('Appointment HTTP layer (integration — real Express app + real Postgr
       const count = await pool.query('SELECT count(*) FROM appointments');
       expect(Number(count.rows[0].count)).toBe(1);
     });
+
+    it('notifies the faculty member on a new request (real NotificationService, real notifications table)', async () => {
+      const res = await request(app).post('/api/appointments').set(STUDENT).send(slotBody());
+      expect(res.status).toBe(201);
+
+      const notifs = await pool.query('SELECT * FROM notifications WHERE recipient_id = $1', ['200']);
+      expect(notifs.rows).toHaveLength(1);
+      expect(notifs.rows[0].type).toBe('APPOINTMENT_REQUESTED');
+      expect(notifs.rows[0].appointment_id).toBe(res.body.id);
+    });
   });
 
   describe('GET /api/appointments/mine', () => {
@@ -169,6 +222,41 @@ describe('Appointment HTTP layer (integration — real Express app + real Postgr
 
     it('returns 403 when a student calls a faculty-only endpoint', async () => {
       const res = await request(app).get('/api/appointments/pending').set(STUDENT);
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('GET /api/appointments/mine-as-faculty', () => {
+    it('returns every status, not just PENDING', async () => {
+      const created = await request(app).post('/api/appointments').set(STUDENT).send(slotBody());
+      await request(app).patch(`/api/appointments/${created.body.id}/approve`).set(FACULTY);
+
+      const res = await request(app).get('/api/appointments/mine-as-faculty').set(FACULTY);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].status).toBe('APPROVED');
+    });
+
+    it('filters by ?status=', async () => {
+      const created = await request(app).post('/api/appointments').set(STUDENT).send(slotBody());
+      await request(app).patch(`/api/appointments/${created.body.id}/reject`).set(FACULTY);
+
+      const rejected = await request(app).get('/api/appointments/mine-as-faculty?status=REJECTED').set(FACULTY);
+      expect(rejected.body).toHaveLength(1);
+
+      const pending = await request(app).get('/api/appointments/mine-as-faculty?status=PENDING').set(FACULTY);
+      expect(pending.body).toHaveLength(0);
+    });
+
+    it('returns 400 VALIDATION_ERROR for an unrecognized status', async () => {
+      const res = await request(app).get('/api/appointments/mine-as-faculty?status=NOT_A_STATUS').set(FACULTY);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('VALIDATION_ERROR');
+    });
+
+    it('returns 403 for a student caller', async () => {
+      const res = await request(app).get('/api/appointments/mine-as-faculty').set(STUDENT);
       expect(res.status).toBe(403);
     });
   });

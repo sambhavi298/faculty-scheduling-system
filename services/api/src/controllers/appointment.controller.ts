@@ -73,6 +73,17 @@ export function createAppointmentController(service: AppointmentService) {
       }
     },
 
+    /** GET /api/appointments/mine-as-faculty — Faculty only. Optional ?status= filter; every status, not just PENDING. */
+    async listMineAsFaculty(req: Request, res: Response, next: NextFunction): Promise<void> {
+      try {
+        const status = req.query.status;
+        const rows = await service.listAllForFaculty(req.user!.id, typeof status === 'string' ? status : undefined);
+        res.status(200).json(rows);
+      } catch (err) {
+        next(err);
+      }
+    },
+
     /** PATCH /api/appointments/:id/approve — Faculty, must own. */
     async approve(req: Request, res: Response, next: NextFunction): Promise<void> {
       try {

@@ -8,14 +8,15 @@ import { requireRole } from '../middleware/identify.middleware';
  * already-tested AppointmentService method; this file only wires HTTP
  * verb + path + role restriction to the matching Controller handler.
  *
- * Deliberately NOT included in this pass: `GET /api/faculty/:facultyId/availability`,
- * `PUT /api/faculty/availability`, `POST /api/faculty/availability/exceptions`
- * (Faculty Availability module) and any admin/reporting endpoints. Those
- * need a FacultyAvailabilityRepository/Service that doesn't exist yet
- * (`docs/IMPLEMENTATION_STATUS.md`: "Availability ... No application-layer
- * Repository/Service yet") — building routes against nothing would mean
- * inventing behavior instead of wrapping tested code, which is the opposite
- * of what this Phase 2 pass is for.
+ * `GET /api/faculty` and `GET /api/faculty/:id/availability` (Faculty
+ * Directory module — read-only browse/search + real availability lookup)
+ * now exist too, in routes/faculty.routes.ts, combined onto the same
+ * `/api` mount in app.ts. Still deliberately NOT included: `PUT
+ * /api/faculty/availability`, `POST /api/faculty/availability/exceptions`
+ * (faculty editing their OWN availability) and any admin/reporting
+ * endpoints — those need write-side Repository/Service work and an ADMIN
+ * role that don't exist yet, unlike the read-only availability computation
+ * this module reuses as-is from get_available_slots() (migrations/sql/0005).
  */
 export function createAppointmentRouter(controller: AppointmentController): Router {
   const router = Router();
@@ -23,6 +24,7 @@ export function createAppointmentRouter(controller: AppointmentController): Rout
   router.post('/appointments', requireRole('STUDENT'), controller.requestAppointment);
   router.get('/appointments/mine', requireRole('STUDENT'), controller.listMine);
   router.get('/appointments/pending', requireRole('FACULTY'), controller.listPending);
+  router.get('/appointments/mine-as-faculty', requireRole('FACULTY'), controller.listMineAsFaculty);
   router.patch('/appointments/:id/approve', requireRole('FACULTY'), controller.approve);
   router.patch('/appointments/:id/reject', requireRole('FACULTY'), controller.reject);
   router.patch('/appointments/:id/cancel', requireRole('STUDENT', 'FACULTY'), controller.cancel);
