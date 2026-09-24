@@ -7,28 +7,40 @@ Team: Sambhavi Ranjan (project/integration owner), Rekha Dharavatu (Student fron
 
 This document exists so a developer can clone the repository and run the project without asking basic questions. It describes what is genuinely implemented as of this handoff — nothing here is aspirational.
 
+**Updated for the full-stack milestone.** Everything below the "Current state" list, up through "How to run tests," was originally written for a backend-only, Phase 2 snapshot (no authentication beyond a trusted header, no Faculty Availability HTTP endpoints, no admin module, no frontend). The historical bug-fix narrative in "Expected test result" is kept verbatim below because it's an accurate record of real problems found and fixed — it just predates several later additions. The "Current state," "HTTP layer," "Current gaps," and "Next development tasks" sections have been rewritten to describe what's actually true now: real JWT authentication, every backend module (including Faculty Availability and Admin/Reporting), all three frontends wired to it, and a real frontend component-test suite.
+
 ## Project
 
 A web-based appointment scheduling system connecting students and faculty at SRM. The database (PostgreSQL) is a core correctness component, not passive storage: appointment overlap prevention, faculty availability computation, and transaction/concurrency correctness are implemented as PostgreSQL constraints, functions, and triggers, not re-implemented in application code. See the project's Level 1–5 design documents for the full rationale; this file only covers what exists and how to run it.
 
 ## Current state
 
-Implemented and tested:
+Implemented and tested — backend:
 
-- PostgreSQL schema (migrations 0001–0007): users/students/faculty, `faculty_availability`, `faculty_schedule`, `faculty_schedule_exceptions`, `batch_schedule`, `appointments`, `notifications`, `audit_log`.
+- PostgreSQL schema (migrations 0001–0009): users/students/faculty, `faculty_availability`, `faculty_schedule`, `faculty_schedule_exceptions`, `batch_schedule`, `appointments`, `notifications`, `audit_log`, `departments`, `batches`. `pgcrypto` (0009) for bcrypt-compatible seed password hashes.
 - `book_appointment()` stored function: atomically validates faculty availability (teaching schedule, leave, blocked periods) and books a PENDING appointment, protected by a GiST exclusion constraint against double-booking (migrations 0002, 0006).
 - `faculty_availability` overlap protection: a second GiST exclusion constraint (migration 0007) prevents two contradictory declared availability windows for the same faculty member/day from coexisting.
-- **Database session timezone pinned to `Asia/Kolkata`** (migration 0008). See **Timezone: why this exists** below — this is not cosmetic, it fixes a real correctness bug that only shows up when the same code runs on PostgreSQL installs with different host-default timezones.
+- **Database session timezone pinned to `Asia/Kolkata`** (migration 0008). See **Timezone: why this exists** below.
 - `get_available_slots()`, `is_faculty_available()`: availability computation, reconciling declared availability, teaching schedule, leave/blocked exceptions, and existing appointments.
-- `enforce_appointment_transition` trigger: guards every status transition against the documented state machine, independent of any application code path.
-- `trg_audit_appointment` trigger: automatic audit logging on every appointment insert/update.
+- `enforce_appointment_transition` trigger; `trg_audit_appointment` trigger (automatic audit logging on every appointment insert/update).
 - Views: `faculty_pending_requests`, `student_upcoming_appointments`, `faculty_current_status`. Materialized view: `faculty_appointment_stats`.
-- `AppointmentRepository` (`src/repositories/appointment.repository.ts`): the only class permitted to execute appointment SQL. Handles booking, idempotent retries, guarded status transitions (approve/reject/cancel/complete/markMissed), and error mapping (SlotConflictError, FacultyUnavailableError, etc.).
-- `AppointmentService` (`src/services/appointment.service.ts`): workflow/policy layer — ownership checks, idempotent no-ops, state-machine validation ahead of the database round trip. Exposes `requestAppointment`, `approve`, `reject`, `cancel`, `complete`, `markMissed`.
-- `AppointmentStateMachine` (`src/domain/appointment-state-machine.ts`): pure domain object mirroring the database trigger's transition rules.
-- **HTTP/Controller layer (Phase 2)** — `src/app.ts`, `src/server.ts`, `src/controllers/appointment.controller.ts`, `src/routes/appointment.routes.ts`, `src/middleware/identify.middleware.ts`, `src/middleware/error-handler.middleware.ts`. Express + TypeScript, Controllers thin (no SQL, no business logic — see **HTTP layer** below for the full rundown). Covers every Appointment Management endpoint in the Level 5 API Contract Table (`POST /api/appointments`, `GET /api/appointments/mine`, `GET /api/appointments/pending`, `PATCH /api/appointments/:id/{approve,reject,cancel,complete,missed}`).
+- `AppointmentRepository`/`AppointmentService`: booking, idempotent retries, guarded status transitions (approve/reject/cancel/complete/markMissed), error mapping — including both `23P01` (exclusion violation) and `40P01` (deadlock) as legitimate "lost the race" outcomes, and `listAllForFaculty()` for the faculty-scoped history endpoint.
+- `FacultyRepository`/`FacultyService`: faculty directory, per-faculty available-slots lookup, and `GET /api/faculty/me/stats` (self-service workload summary).
+- `FacultyAvailabilityRepository`/`Service`: read (`GET /api/faculty/availability`, own active windows) and write (`PUT /api/faculty/availability` full replace, `POST .../exceptions`) sides of faculty availability management.
+- `AuthRepository`/`AuthService`: real bcrypt + JWT authentication (`POST /api/auth/login`).
+- `AdminRepository`/`AdminService`: departments/batches/faculty/students CRUD (no delete — no soft-delete column exists), read-only appointments/audit-log listing, dashboard counts + per-faculty stats, the `RANK()`/running-`SUM()` workload report.
+- `NotificationRepository`/`NotificationService`: in-app notifications, fired best-effort on every appointment transition.
+- **HTTP/Controller layer** — every module above has a Controller + router; `src/middleware/identify.middleware.ts` verifies a real JWT (see **HTTP layer** below); `src/middleware/error-handler.middleware.ts` maps every domain error centrally.
 
-Not implemented yet (see **Current gaps** below): Faculty Availability HTTP endpoints, real authentication/authorization, NotificationService (dispatch — the `notifications` table exists but nothing writes to it or sends anything), and all three frontends.
+Implemented and tested — frontend (`apps/student`, `apps/faculty`, `apps/admin`, shared package `packages/ui`):
+
+- All three apps share one `SessionProvider`/`useSession` (real JWT session, `allowedRoles` per app) and one `apiClient` (`Authorization: Bearer <token>` on every request).
+- Student: login, faculty directory/search, request an appointment, view my appointments.
+- Faculty: login, dashboard, pending requests (approve/reject), availability editor, upcoming appointments, history (with the self-service stats section).
+- Admin: login, dashboard, faculty/student/department/batch management, read-only appointments and audit-log viewers, the workload report.
+- Vitest + `@testing-library/react` component tests in all three apps (`npm test`), exercising the real component tree against a stubbed `fetch` boundary only.
+
+Not implemented (see **Current gaps** below): a background job to refresh `faculty_appointment_stats` (refreshed on read instead — a deliberate, documented simplification), an endpoint to list previously-added faculty availability exceptions, an admin delete/deactivate UI (matches the backend, which has none), deployment/CI, and component tests for every frontend page (a real but partial start exists — see `docs/IMPLEMENTATION_STATUS.md`).
 
 ## How to install
 
@@ -109,7 +121,7 @@ Every test-file timestamp literal that represents a specific real-world hour (bu
 
 ## HTTP layer
 
-Phase 2 (post-Level-7) wraps the already-tested `AppointmentService` in an Express + TypeScript HTTP layer, following the Controller → Service → Repository → PostgreSQL architecture from the top of this document.
+An Express + TypeScript HTTP layer over every Service in `src/services/`, following the Controller → Service → Repository → PostgreSQL architecture from the top of this document.
 
 **Running it:**
 
@@ -118,41 +130,70 @@ cd services/api
 npm run dev      # ts-node src/server.ts — reads PORT (default 3000) and PG* from .env
 ```
 
-**Caller identity — a deliberate, temporary stand-in for authentication.** Real authentication (Task 2 in **Next development tasks**) does not exist yet. Rather than block the HTTP layer on it, `src/middleware/identify.middleware.ts` reads two headers directly from the request:
+**Caller identity — real authentication.** `POST /api/auth/login` (`{email, password}`) verifies the password with bcrypt against `users.password_hash` and returns a JWT (`{sub: userId, role}`, 12h expiry) plus the user's own `{id, role, fullName, email}`. Every other `/api/*` route requires `Authorization: Bearer <token>`; `src/middleware/identify.middleware.ts` verifies it (signature + expiry) and populates `req.user` from its claims — nothing else identifies a caller. **The `X-User-Id`/`X-User-Role` header scheme described in earlier versions of this document no longer exists and is rejected**: a request with those headers but no valid bearer token gets a `401 UNAUTHENTICATED`, the same as a request with nothing at all. A role that doesn't match what an endpoint requires (`requireRole()` at the route level) gets a `403 FORBIDDEN`.
 
-```
-X-User-Id: <numeric id, matching a real row in users/students/faculty>
-X-User-Role: STUDENT | FACULTY
-```
-
-Missing or invalid headers get a `401 UNAUTHENTICATED`. A role that doesn't match what an endpoint requires (checked by `requireRole()` at the route level, per the Level 5 API Contract Table's "Auth/Authz" column) gets a `403 FORBIDDEN`. **This is not a security regression** — `AppointmentService`'s ownership checks (`findOwnedByFaculty`, the student/faculty check in `cancel()`) already trusted a caller-supplied id "on faith" before this HTTP layer existed; this middleware doesn't weaken that trust boundary, it just makes it reachable over HTTP and gives every Controller one consistent place (`req.user`) to read it from. When real authentication is built, only `identify.middleware.ts`'s *implementation* needs to change — verify a real credential, look up the real user, populate `req.user` the same way. No Controller or route file should need to change.
-
-**Endpoints implemented** (Level 5 API Contract Table, Appointment Management module only):
+**Endpoints implemented:**
 
 | Endpoint | Method | Role | Success | Key error responses |
 |---|---|---|---|---|
+| `/api/auth/login` | POST | none (this is how you get an identity) | 200 | 401 UNAUTHENTICATED (same message for "no such user" and "wrong password" — no email enumeration) |
 | `/api/appointments` | POST | STUDENT | 201 | 400 VALIDATION_ERROR, 409 SLOT_CONFLICT, 409 FACULTY_UNAVAILABLE |
 | `/api/appointments/mine` | GET | STUDENT | 200 | — |
 | `/api/appointments/pending` | GET | FACULTY | 200 | — |
+| `/api/appointments/mine-as-faculty` | GET | FACULTY | 200 | — (`?status=` optional single-status filter; unfiltered returns every status) |
 | `/api/appointments/:id/approve` | PATCH | FACULTY, must own | 200 (idempotent no-op if already APPROVED) | 404 NOT_FOUND, 409 INVALID_TRANSITION |
 | `/api/appointments/:id/reject` | PATCH | FACULTY, must own | 200 | 404, 409 |
 | `/api/appointments/:id/cancel` | PATCH | STUDENT or FACULTY, must be a party | 200 | 404, 409 |
 | `/api/appointments/:id/complete` | PATCH | FACULTY, must own | 200 | 404, 409 |
 | `/api/appointments/:id/missed` | PATCH | FACULTY, must own | 200 | 404, 409 |
+| `/api/faculty` | GET | STUDENT or FACULTY | 200 | — (`?search=` optional) |
+| `/api/faculty/:id/availability` | GET | STUDENT or FACULTY | 200 | 400, 404 (`?date=` required) |
+| `/api/faculty/me/stats` | GET | FACULTY | 200 | — (always the caller's own row; no path param exists to get wrong) |
+| `/api/faculty/availability` | GET | FACULTY | 200 | — (own currently-active windows) |
+| `/api/faculty/availability` | PUT | FACULTY | 200 | 400, 409 AVAILABILITY_OVERLAP |
+| `/api/faculty/availability/exceptions` | POST | FACULTY | 201 | 400 |
+| `/api/notifications/mine` | GET | any authenticated | 200 | — |
+| `/api/notifications/:id/read` | PATCH | owner only | 200 | 404 |
+| `/api/admin/departments` | GET, POST | ADMIN | 200 / 201 | 400 |
+| `/api/admin/departments/:id` | PATCH | ADMIN | 200 | 400 |
+| `/api/admin/batches` | GET, POST | ADMIN | 200 / 201 | 400 (`?departmentId=` optional filter on GET) |
+| `/api/admin/batches/:id` | PATCH | ADMIN | 200 | 400 |
+| `/api/admin/faculty` | GET, POST | ADMIN | 200 / 201 | 400 (POST returns `{account, temporaryPassword}` — shown once) |
+| `/api/admin/faculty/:id` | PATCH | ADMIN | 200 | 400 |
+| `/api/admin/students` | GET, POST | ADMIN | 200 / 201 | 400 (`?batchId=` optional filter on GET) |
+| `/api/admin/students/:id` | PATCH | ADMIN | 200 | 400 |
+| `/api/admin/appointments` | GET | ADMIN | 200 | — (read-only; `?status=&facultyId=&studentId=&page=&pageSize=`) |
+| `/api/admin/audit-log` | GET | ADMIN | 200 | — (read-only; `?entityType=&entityId=&page=&pageSize=`) |
+| `/api/admin/dashboard` | GET | ADMIN | 200 | — |
+| `/api/admin/reports/appointments-summary` | GET | ADMIN | 200 | — |
 | `/health` | GET | none | 200 | — |
 
-Every domain error (`ValidationError`, `NotFoundError`, `SlotConflictError`, `FacultyUnavailableError`, `AlreadyProcessedError`, `InvalidTransitionError`) is mapped to its HTTP status code in exactly one place, `src/middleware/error-handler.middleware.ts` — Controllers never branch on error type themselves, they just `next(err)`.
+Every domain error (`ValidationError`, `NotFoundError`, `SlotConflictError`, `FacultyUnavailableError`, `AlreadyProcessedError`, `InvalidTransitionError`, `AvailabilityOverlapError`) is mapped to its HTTP status code in exactly one place, `src/middleware/error-handler.middleware.ts` — Controllers never branch on error type themselves, they just `next(err)`.
 
-**Deliberately out of scope for this pass:** `GET /api/faculty/:facultyId/availability`, `PUT /api/faculty/availability`, `POST /api/faculty/availability/exceptions` (Faculty Availability module) and any admin/reporting endpoints. Building routes for these now would mean inventing behavior rather than wrapping tested code — there is no `FacultyAvailabilityRepository`/`Service` yet (see **Current gaps**, item 6, and Task 4 in **Next development tasks**).
+**Genuinely still missing** (not deferred-out-of-scope like the old version of this section said — actually absent): an endpoint to list previously-added faculty availability exceptions (only add exists), and any admin write path for an appointment (deliberate, not missing — see `docs/GITHUB_ISSUES.md`'s Level 3 note).
 
 ## How to run tests
 
+Backend:
+
 ```bash
 cd services/api
-npm test                              # unit, integration, concurrency, security, advanced-sql, http — 211 tests
-npm run test:performance              # real measurements against real PostgreSQL — 5 tests
+npm test                              # unit, integration, concurrency, security, advanced-sql, http — 531 tests
+npm run test:performance              # real measurements against real PostgreSQL
 npm run test:failure-injection        # run in isolation — it stops/restarts real PostgreSQL
 ```
+
+Frontend (real component tests — Vitest + `@testing-library/react`, jsdom):
+
+```bash
+npm test              # from the repo root — runs all three apps' test suites in sequence
+# or, per app:
+npm run test -w apps/student
+npm run test -w apps/faculty
+npm run test -w apps/admin
+```
+
+These need no running backend or database — every test stubs `fetch` at the network boundary with response bodies shaped exactly like the real backend's, and exercises everything above that boundary (components, `SessionProvider`, `apiClient`) unmocked.
 
 **Always use `npm run test:failure-injection`, not a raw `npx jest --selectProjects failure-injection ...` command.** The npm script carries `--coverage=false` (see **A second, independent bug** below for why); the raw command doesn't, and will fail on a spurious coverage-threshold error even when every individual test passes. An earlier version of this document itself recommended the raw command — that was a real, since-fixed bug in this documentation, not just a hypothetical mistake (see **Windows-specific note** below for the failing run that surfaced it).
 
@@ -161,6 +202,12 @@ The failure-injection project must be run by itself, never combined with the oth
 `tests/http/appointment.http.test.ts` follows this project's existing convention of never mocking the database: it builds the real Express app (`createApp()`) wired to a real `AppointmentService` backed by a real `pg.Pool`, and drives it with `supertest`, the same way `tests/integration/*` drives `AppointmentService` directly.
 
 ## Expected test result
+
+**Current milestone (read this first):** `npm test` in `services/api` — **531/531 passing, exit code 0** — real PostgreSQL 16, database session pinned to `Asia/Kolkata`, 100% statement coverage / 98.98% branch / 99.29% functions. This is the full set: every module (appointments, faculty directory + availability, auth, admin/reporting, notifications), including a real HTTP-level double-booking concurrency test (`tests/concurrency/double-booking-http.test.ts`) alongside the repository-level one. Frontend: 22/22 Vitest component tests passing across the three apps, plus a clean `npm run typecheck` and `npm run build` on all three.
+
+One test that used to be time-of-day-dependent — `faculty_current_status derives IN_APPOINTMENT for a faculty member with an APPROVED appointment covering the current instant` — is now fixed. It previously used Prof. Rao (`'200'`, who has a *permanent* Mon–Fri 09:00–17:00 availability row) as its test faculty member; its fallback path inserted a wide-open test-scoped window for "today," which collides with that permanent row's GiST exclusion constraint on every weekday outside 09:00–17:00 IST — meaning the test could only pass inside roughly a nine-hour weekday window, not because of any flakiness but as a deterministic consequence of the faculty member chosen. It now uses Prof. Iyer (`'201'`, zero seeded availability, already used elsewhere in the same file as "the faculty with no availability" fixture) instead, so the test-scoped window can never collide with anything pre-existing. Confirmed passing at 20:21 IST on a Thursday — exactly the condition that used to fail it.
+
+The historical record below (Phase 2 era) is kept for reference — it documents real bugs found and fixed at the time (the timezone bug, a deadlock/exclusion-violation concurrency gap, an index-selectivity test-design bug, a Windows service-name hardcoding bug) and remains an accurate account of that work. The pass counts it quotes (211, 236, etc.) are from that earlier, smaller surface area — they are not wrong, just superseded by the 531 total above, which now covers every module this project has.
 
 As actually observed after the timezone fix (migration 0008), the Phase 2 HTTP layer, and all corrections below, verified against real PostgreSQL 16 with the database session pinned to `Asia/Kolkata`, checking the actual process exit code each time (not just the printed pass count):
 
@@ -201,41 +248,41 @@ Two real, sequential issues surfaced getting this working end-to-end on an actua
 ## Current architecture
 
 ```
-Controller     — src/controllers/appointment.controller.ts
+Controller     — src/controllers/*.controller.ts
       ↓            HTTP concerns only: request/response shape, status codes.
-      ↓            src/routes/appointment.routes.ts wires paths + role checks;
-      ↓            src/middleware/identify.middleware.ts extracts caller identity
-      ↓            (temporary — see "HTTP layer" above); src/app.ts wires it all up.
-Service        — src/services/appointment.service.ts
+      ↓            src/routes/*.routes.ts wires paths + role checks;
+      ↓            src/middleware/identify.middleware.ts verifies the caller's
+      ↓            real JWT (see "HTTP layer" above); src/app.ts wires it all up.
+Service        — src/services/*.service.ts
       ↓            business rules, ownership, state transitions, orchestration
-Repository      — src/repositories/appointment.repository.ts
-      ↓            the only class that executes appointment SQL
+Repository      — src/repositories/*.repository.ts
+      ↓            the only classes that execute their module's SQL
 PostgreSQL      — migrations/sql/000*.sql
                    final integrity authority: constraints, triggers, transactions,
                    exclusion constraints, stored functions
 ```
 
-The database is deliberately not just storage: `book_appointment()`, `is_faculty_available()`, `get_available_slots()`, `enforce_appointment_transition`, and the two GiST exclusion constraints all enforce correctness at the database layer, independent of whatever the application code does or doesn't check first.
+One Controller/Service/Repository trio per module: appointments, faculty directory + availability, auth, admin/reporting, notifications — same layering throughout. The database is deliberately not just storage: `book_appointment()`, `is_faculty_available()`, `get_available_slots()`, `enforce_appointment_transition`, and the two GiST exclusion constraints all enforce correctness at the database layer, independent of whatever the application code does or doesn't check first.
+
+Frontend: `apps/student`, `apps/faculty`, `apps/admin` (Vite + React + TypeScript), each consuming the shared `packages/ui` package (design system, typed API client, `SessionProvider`) via a direct source-file path alias, not a built/published package.
 
 ## Current gaps
 
-1. No Faculty Availability HTTP endpoints — `GET /api/faculty/:facultyId/availability`, `PUT /api/faculty/availability`, `POST /api/faculty/availability/exceptions` are not built; there is no `FacultyAvailabilityRepository`/`Service` yet to wrap (see item 6 below).
-2. No real authentication — `src/middleware/identify.middleware.ts` reads caller identity from `X-User-Id`/`X-User-Role` headers with no cryptographic verification (see **HTTP layer** above). Ownership checks inside `AppointmentService` are correct given a caller identity, but nothing yet verifies that identity is genuine.
-3. No `NotificationService` — the `notifications` table exists in the schema but nothing writes to it or sends an email/push/websocket notification.
-4. No frontend (Student, Faculty, or Admin) — not started.
-5. No automated migration runner — migrations are applied by hand with `psql`, in numeric order (see above).
-6. `faculty_availability` has no application-layer Repository/Service yet — the overlap-protection constraint (migration 0007) is currently only exercised directly against PostgreSQL in tests; there is no code path yet for a faculty member to edit their own availability.
-7. A second, unfixed instance of the PostgreSQL-deadlock-vs-exclusion-violation test flake (see **Known open issue** above), in `faculty-availability-overlap-protection.test.ts` — not yet fixed, out of Phase 2 scope.
+Genuinely open items, not aspirational — everything else described in this document is built and tested.
+
+1. No endpoint to list previously-added faculty availability exceptions — only `POST .../exceptions` (add) exists, no `GET`. The Availability page's exceptions form is honest about this in a notice banner.
+2. No faculty background job to refresh `faculty_appointment_stats` — both the admin dashboard and `GET /api/faculty/me/stats` refresh it on every read instead. Correct, but not the performance win a real scheduled refresh would be. No scheduler infrastructure exists in this codebase to build one on top of yet.
+3. No admin delete/deactivate UI or endpoint for any entity — matches the backend, which has none (no soft-delete column on `departments`/`batches`/`faculty`/`students`). Would need a real migration to do properly.
+4. Frontend component test coverage is real but partial — Login (all three apps), Faculty History, and Admin Departments have tests; most other pages don't yet. See `docs/IMPLEMENTATION_STATUS.md`.
+5. No true multi-process HTTP concurrency test spanning a separately-running server process — the concurrency tests (including the HTTP-level one) all run an in-process `createApp()` instance via `supertest`, which is a real Express app and a real database but not a separately-launched server process.
+6. No automated migration runner — migrations are applied by hand with `psql`, in numeric order (see above).
+7. No deployment configuration, CI pipeline, or hosting setup. Out of scope for this project.
 
 ## Next development tasks
 
-Recommended order, matching the project's own phased roadmap:
+The backend and all three frontends are functionally complete. Recommended order for what's left:
 
-1. ~~HTTP/controller layer (Express + TypeScript) wrapping the existing Service layer~~ — **done (Phase 2)**, Appointment Management module only. See **HTTP layer** above.
-2. Authentication and authorization (STUDENT/FACULTY/ADMIN roles, session/token verification, ownership checks tied to the authenticated identity rather than a caller-supplied id). Replaces `identify.middleware.ts`'s implementation only — no Controller/route file should need to change.
-3. NotificationService — distinguish creating a notification record from actually dispatching it (email/etc.); do not claim delivery until both exist and are tested.
-4. `FacultyAvailabilityRepository`/`Service` — the application-layer counterpart to migration 0007, so faculty can manage their own availability through the API once it exists. Unblocks the three Faculty Availability HTTP endpoints deferred out of Phase 2.
-5. Frontend work (Student — Rekha, Faculty — Sankalp, Admin — Mohammed Izhaan) — see `docs/GITHUB_ISSUES.md` for the proposed task breakdown per person. The Appointment Management endpoints from Phase 2 unblock real API integration for the student/faculty flows now; anything touching availability still depends on (4).
-6. Frontend/backend integration testing (Mohammed Izhaan) once both sides exist.
-
-(Also outstanding, low-priority, not in the numbered roadmap: fix the `faculty-availability-overlap-protection.test.ts` flake noted in **Known open issue** above — a one-line assertion fix, same pattern as the double-booking fix.)
+1. Component tests for the remaining frontend pages (see gap 4 above) — the infrastructure exists (Vitest + Testing Library, all three apps), so this is additive test-writing, not new setup.
+2. A faculty availability exceptions list endpoint (`GET /api/faculty/availability/exceptions`, mirroring the pattern the availability-windows `GET` already follows), to close gap 1.
+3. A real background refresh job for `faculty_appointment_stats`, once this project has any scheduler infrastructure at all, to close gap 2.
+4. Everything else in **Current gaps** above, roughly in the order listed — none of it blocks a working demo of the system as it stands today.

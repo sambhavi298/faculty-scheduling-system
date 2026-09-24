@@ -32,6 +32,27 @@ export interface AvailableSlotRow {
 }
 
 /**
+ * Row shape for GET /api/faculty/me/stats — the caller's own row from
+ * `faculty_appointment_stats` (migrations/sql/0005). Structurally identical
+ * to AdminRepository's FacultyStatsRow (same materialized view, same
+ * columns) but defined separately here rather than imported: this
+ * repository's contract is "the one class permitted to run faculty-facing
+ * SQL," so it owns its own row types the same way AdminRepository owns
+ * theirs, rather than the two admin/faculty modules reaching into each
+ * other's files for a type.
+ */
+export interface FacultyOwnStatsRow {
+  faculty_id: string;
+  full_name: string;
+  completed_count: number;
+  missed_count: number;
+  rejected_count: number;
+  cancelled_count: number;
+  avg_response_minutes: number | null;
+  total_requests: number;
+}
+
+/**
  * The ONLY class in this codebase permitted to execute faculty-directory and
  * faculty-availability SQL, mirroring AppointmentRepository's role for the
  * appointment domain (Level 5, Section 1). Every read here is a straight
@@ -85,5 +106,36 @@ export class FacultyRepository {
       [facultyId, date, slotMinutes]
     );
     return result.rows;
+  }
+
+  /**
+   * Refreshes `faculty_appointment_stats` before every read of it, exactly
+   * mirroring AdminRepository.refreshFacultyStats()'s own reasoning: no
+   * background-refresh scheduler exists anywhere in this codebase (still
+   * out of scope), so refreshing on read is what keeps this honestly
+   * correct rather than confidently stale. `CONCURRENTLY` never blocks
+   * concurrent reads — it needs the unique index the view already has
+   * (migrations/sql/0005).
+   */
+  async refreshStats(): Promise<void> {
+    await this.db.query(`REFRESH MATERIALIZED VIEW CONCURRENTLY faculty_appointment_stats`);
+  }
+
+  /**
+   * One faculty member's own row from the stats view — the self-service
+   * counterpart to AdminRepository.listFacultyStats(), scoped to a single
+   * `faculty_id` rather than every faculty member. The view is built with a
+   * LEFT JOIN from `faculty`/`users` (see migrations/sql/0005 and the
+   * "correctly reports zero requests" test in
+   * tests/advanced-sql/advanced-sql-features.test.ts), so every real
+   * faculty id has a row even with zero appointments — `null` here means
+   * the id itself doesn't exist, which FacultyService turns into a 404.
+   */
+  async getOwnStats(facultyId: string): Promise<FacultyOwnStatsRow | null> {
+    const result = await this.db.query<FacultyOwnStatsRow>(
+      `SELECT * FROM faculty_appointment_stats WHERE faculty_id = $1`,
+      [facultyId]
+    );
+    return result.rows[0] ?? null;
   }
 }

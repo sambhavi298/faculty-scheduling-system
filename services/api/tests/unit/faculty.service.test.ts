@@ -1,13 +1,29 @@
 import { FacultyService } from '../../src/services/faculty.service';
-import { FacultyRepository, FacultyDirectoryRow, AvailableSlotRow } from '../../src/repositories/faculty.repository';
+import { FacultyRepository, FacultyDirectoryRow, AvailableSlotRow, FacultyOwnStatsRow } from '../../src/repositories/faculty.repository';
 import { ValidationError } from '../../src/errors/validation.error';
 import { NotFoundError } from '../../src/errors/not-found.error';
 
-function fakeRepo(): jest.Mocked<Pick<FacultyRepository, 'listFaculty' | 'findById' | 'getAvailableSlots'>> {
+function fakeRepo(): jest.Mocked<Pick<FacultyRepository, 'listFaculty' | 'findById' | 'getAvailableSlots' | 'refreshStats' | 'getOwnStats'>> {
   return {
     listFaculty: jest.fn(),
     findById: jest.fn(),
     getAvailableSlots: jest.fn(),
+    refreshStats: jest.fn(),
+    getOwnStats: jest.fn(),
+  };
+}
+
+function statsRow(overrides: Partial<FacultyOwnStatsRow> = {}): FacultyOwnStatsRow {
+  return {
+    faculty_id: '200',
+    full_name: 'Prof. Rao',
+    completed_count: 3,
+    missed_count: 0,
+    rejected_count: 1,
+    cancelled_count: 0,
+    avg_response_minutes: 42.5,
+    total_requests: 4,
+    ...overrides,
   };
 }
 
@@ -160,6 +176,28 @@ describe('FacultyService (unit — mocked FacultyRepository)', () => {
       repo.getAvailableSlots.mockResolvedValueOnce([]);
 
       expect(await service.getAvailability('200', '2026-08-31')).toEqual([]);
+    });
+  });
+
+  describe('getOwnStats', () => {
+    it('refreshes the materialized view before reading it, then returns the caller\'s own row', async () => {
+      const repo = fakeRepo();
+      repo.getOwnStats.mockResolvedValueOnce(statsRow());
+      const service = new FacultyService(repo as unknown as FacultyRepository);
+
+      const result = await service.getOwnStats('200');
+
+      expect(repo.refreshStats).toHaveBeenCalledTimes(1);
+      expect(repo.getOwnStats).toHaveBeenCalledWith('200');
+      expect(result).toEqual(statsRow());
+    });
+
+    it('throws NotFoundError when the repository finds no row for that faculty id', async () => {
+      const repo = fakeRepo();
+      repo.getOwnStats.mockResolvedValueOnce(null);
+      const service = new FacultyService(repo as unknown as FacultyRepository);
+
+      await expect(service.getOwnStats('999999')).rejects.toThrow(NotFoundError);
     });
   });
 });

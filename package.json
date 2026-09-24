@@ -14,6 +14,14 @@
     "build:student": "npm run build -w apps/student",
     "build:faculty": "npm run build -w apps/faculty",
     "build:admin": "npm run build -w apps/admin",
-    "typecheck": "npm run typecheck -w apps/student && npm run typecheck -w apps/faculty && npm run typecheck -w apps/admin"
+    "typecheck": "npm run typecheck -w apps/student && npm run typecheck -w apps/faculty && npm run typecheck -w apps/admin",
+    "test": "npm run test -w apps/student && npm run test -w apps/faculty && npm run test -w apps/admin"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.0.1",
+    "@testing-library/user-event": "^14.5.2",
+    "jsdom": "^25.0.1",
+    "vitest": "^2.1.4"
   }
 }

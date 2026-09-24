@@ -15,6 +15,11 @@ export function createFacultyRouter(controller: FacultyController): Router {
   const router = Router();
 
   router.get('/faculty', requireRole('STUDENT', 'FACULTY'), controller.listFaculty);
+  // Registered ahead of '/faculty/:id/availability' on principle (an exact
+  // literal segment before a param route), though the two paths don't
+  // actually collide today ('/faculty/me/stats' has no '/availability'
+  // suffix) — keeps this file safe against that changing later.
+  router.get('/faculty/me/stats', requireRole('FACULTY'), controller.getOwnStats);
   router.get('/faculty/:id/availability', requireRole('STUDENT', 'FACULTY'), controller.getAvailability);
 
   return router;

@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { AvailableSlot, FacultyDirectoryRow } from '../types';
+import type { AvailableSlot, FacultyDirectoryRow, FacultyStatsRow } from '../types';
 
 /**
  * Every function here corresponds 1:1 to a real, already-implemented route in
@@ -21,4 +21,13 @@ export const facultyApi = {
     if (slotMinutes) params.set('slotMinutes', String(slotMinutes));
     return apiClient.get(`/api/faculty/${encodeURIComponent(facultyId)}/availability?${params.toString()}`);
   },
+
+  /**
+   * GET /api/faculty/me/stats — FACULTY only, always the caller's own row
+   * (the backend scopes this to the verified JWT's subject; there is no
+   * faculty id in this URL to get wrong). Same row shape as one entry of
+   * adminApi.getDashboard()'s facultyStats — same materialized view,
+   * scoped to one faculty member instead of every one of them.
+   */
+  getOwnStats: (): Promise<FacultyStatsRow> => apiClient.get('/api/faculty/me/stats'),
 };

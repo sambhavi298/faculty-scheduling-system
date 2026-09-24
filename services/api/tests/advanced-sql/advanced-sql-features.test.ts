@@ -233,50 +233,56 @@ describe('Level 7 — Advanced SQL feature tests (real PostgreSQL objects)', () 
       const start = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
       const end = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
 
-      // "Right now" is real wall-clock time, whatever day/hour that happens
-      // to be when this suite runs (including outside Prof. Rao's seeded
-      // Mon-Fri 09:00-17:00 window, e.g. a weekend CI run). Since migration
-      // 0006, book_appointment() correctly enforces availability, so this
-      // test needs its own test-scoped, wide-open window covering today's
-      // actual date only — cleaned up immediately after — rather than
-      // relying on the seeded Mon-Fri fixture, which this test was never
-      // really about in the first place (it's testing faculty_current_status,
-      // not the availability gate).
+      // Deliberately Prof. Iyer (201), NOT Prof. Rao (FACULTY, '200'), and
+      // deliberately local to this one test. Prof. Rao has a PERMANENT
+      // Mon-Fri 09:00-17:00 faculty_availability row with no
+      // effective_until (open-ended). A wide-open 00:00-23:59 test-scoped
+      // window for "today" overlaps that permanent row on every single
+      // weekday regardless of what time it currently is — including
+      // outside 09:00-17:00, precisely the case this insert exists to
+      // handle — so the GiST exclusion constraint (migration 0007) rejects
+      // it every time the suite happens to run on a weekday outside
+      // business hours. That made this test pass only inside a roughly
+      // nine-hour weekday window and fail the rest of the time: not a
+      // flake, but a deterministic consequence of picking a faculty member
+      // who already has standing coverage for the very day being tested.
+      // Prof. Iyer has zero seeded faculty_availability rows (used
+      // elsewhere in this same file, e.g. the window-function test above,
+      // specifically as "the faculty with no availability" fixture), so a
+      // test-scoped window for Iyer can never collide with anything
+      // pre-existing — this test now passes at any hour, any day.
+      const testFaculty = '201';
       const startDate = new Date(start);
       const todayStr = start.slice(0, 10);
       const dow = startDate.getUTCDay(); // matches EXTRACT(DOW FROM ...) used by is_faculty_available()
 
-      // Since migration 0007, faculty_availability itself now has a GiST
-      // exclusion constraint blocking two overlapping ACTIVE windows for
-      // the same faculty/day — so unconditionally inserting a wide-open
-      // window here would itself fail whenever "today" happens to be one
-      // of Prof. Rao's seeded Mon-Fri days (it would overlap the permanent
-      // 09:00-17:00 row). Only insert the test-scoped window if the slot
-      // isn't already genuinely available; only clean up what we inserted.
+      // Still guarded rather than unconditional, both for defensive
+      // idempotency and to keep the intent explicit: only insert if the
+      // slot isn't already available, only clean up what was inserted.
       const alreadyAvailable = (
-        await pool.query('SELECT is_faculty_available($1, $2::tstzrange) AS ok', [FACULTY, `[${start},${end})`])
+        await pool.query('SELECT is_faculty_available($1, $2::tstzrange) AS ok', [testFaculty, `[${start},${end})`])
       ).rows[0].ok as boolean;
       if (!alreadyAvailable) {
         await pool.query(
           `INSERT INTO faculty_availability (faculty_id, day_of_week, start_time, end_time, effective_from, effective_until)
            VALUES ($1, $2, '00:00', '23:59', $3, $3)`,
-          [FACULTY, dow, todayStr]
+          [testFaculty, dow, todayStr]
         );
       }
       try {
         const { rows } = await pool.query(
           `SELECT * FROM book_appointment($1,$2,$3::tstzrange,$4,$5)`,
-          [STUDENT_A, FACULTY, `[${start},${end})`, 'Covers right now', null]
+          [STUDENT_A, testFaculty, `[${start},${end})`, 'Covers right now', null]
         );
         await pool.query(`UPDATE appointments SET status = 'APPROVED' WHERE id = $1`, [rows[0].id]);
 
-        const status = await pool.query('SELECT current_status FROM faculty_current_status WHERE faculty_id = $1', [FACULTY]);
+        const status = await pool.query('SELECT current_status FROM faculty_current_status WHERE faculty_id = $1', [testFaculty]);
         expect(status.rows[0].current_status).toBe('IN_APPOINTMENT');
       } finally {
         if (!alreadyAvailable) {
           await pool.query(
             `DELETE FROM faculty_availability WHERE faculty_id = $1 AND effective_from = $2 AND day_of_week = $3`,
-            [FACULTY, todayStr, dow]
+            [testFaculty, todayStr, dow]
           );
         }
       }

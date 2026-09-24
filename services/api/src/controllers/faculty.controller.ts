@@ -64,6 +64,16 @@ export function createFacultyController(service: FacultyService) {
         next(err);
       }
     },
+
+    /** GET /api/faculty/me/stats — FACULTY only, always the caller's own row (req.user!.id), never a path param. */
+    async getOwnStats(req: Request, res: Response, next: NextFunction): Promise<void> {
+      try {
+        const row = await service.getOwnStats(req.user!.id);
+        res.status(200).json(row);
+      } catch (err) {
+        next(err);
+      }
+    },
   };
 }
 

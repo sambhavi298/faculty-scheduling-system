@@ -1,4 +1,4 @@
-import { FacultyRepository } from '../repositories/faculty.repository';
+import { FacultyRepository, FacultyOwnStatsRow } from '../repositories/faculty.repository';
 import { NotFoundError } from '../errors/not-found.error';
 import { ValidationError } from '../errors/validation.error';
 
@@ -90,5 +90,28 @@ export class FacultyService {
       slot_start: row.slot_start.toISOString(),
       slot_end: row.slot_end.toISOString(),
     }));
+  }
+
+  /**
+   * GET /api/faculty/me/stats — a faculty member's own workload summary.
+   * Added so the faculty frontend's "Appointment history" stats section
+   * (previously unbuilt for lack of any faculty-facing stats endpoint —
+   * GET /api/admin/dashboard's facultyStats is ADMIN-only, and rightly so:
+   * one faculty member has no business reading another's numbers) has a
+   * real, narrowly-scoped endpoint to call: this refreshes and reads
+   * exactly one row of `faculty_appointment_stats`, never any other faculty
+   * member's. `facultyId` here always comes from the verified JWT's `sub`
+   * claim (req.user!.id in the Controller), never a caller-supplied path
+   * param — there is no `:id` in this route on purpose, so there is no
+   * "am I allowed to see this other faculty member's stats" check to get
+   * wrong in the first place.
+   */
+  async getOwnStats(facultyId: string): Promise<FacultyOwnStatsRow> {
+    await this.repo.refreshStats();
+    const row = await this.repo.getOwnStats(facultyId);
+    if (!row) {
+      throw new NotFoundError('No faculty member exists with that id.');
+    }
+    return row;
   }
 }

@@ -20,5 +20,6 @@
       "@faculty-scheduling/ui": ["../../packages/ui/src/index.ts"]
     }
   },
-  "include": ["src", "../../packages/ui/src"]
+  "include": ["src", "../../packages/ui/src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "../../packages/ui/src/**/*.test.ts", "../../packages/ui/src/**/*.test.tsx"]
 }

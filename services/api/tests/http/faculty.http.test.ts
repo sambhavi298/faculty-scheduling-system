@@ -44,6 +44,7 @@ function bearer(id: string, role: 'STUDENT' | 'FACULTY' | 'ADMIN'): { Authorizat
 
 const STUDENT = bearer('100', 'STUDENT');
 const FACULTY = bearer('200', 'FACULTY');
+const OTHER_FACULTY = bearer('201', 'FACULTY');
 
 describe('Faculty Directory HTTP layer (integration — real Express app + real PostgreSQL)', () => {
   let pool: Pool;
@@ -103,6 +104,48 @@ describe('Faculty Directory HTTP layer (integration — real Express app + real 
       const res = await request(app).get('/api/faculty?search=nobody-has-this-name').set(STUDENT);
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
+    });
+  });
+
+  describe('GET /api/faculty/me/stats', () => {
+    it('returns 401 without identity headers', async () => {
+      const res = await request(app).get('/api/faculty/me/stats');
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('UNAUTHENTICATED');
+    });
+
+    it('returns 403 for a STUDENT caller (faculty-only endpoint)', async () => {
+      const res = await request(app).get('/api/faculty/me/stats').set(STUDENT);
+      expect(res.status).toBe(403);
+    });
+
+    it('returns zero counts (not an error) for a faculty member with no appointments at all', async () => {
+      const res = await request(app).get('/api/faculty/me/stats').set(OTHER_FACULTY); // Prof. Iyer, no seeded appointments
+      expect(res.status).toBe(200);
+      expect(res.body.faculty_id).toBe('201');
+      expect(Number(res.body.total_requests)).toBe(0);
+      expect(Number(res.body.completed_count)).toBe(0);
+    });
+
+    it('reflects a real booking for the caller, and never the other faculty member\'s numbers', async () => {
+      const book = await request(app).post('/api/appointments').set(STUDENT).send({
+        facultyId: '200',
+        slotStart: '2026-08-25T14:00:00+05:30',
+        slotEnd: '2026-08-25T14:30:00+05:30',
+        reason: 'Stats endpoint test booking',
+      });
+      expect(book.status).toBe(201);
+
+      const rao = await request(app).get('/api/faculty/me/stats').set(FACULTY);
+      expect(rao.status).toBe(200);
+      expect(rao.body.faculty_id).toBe('200');
+      expect(Number(rao.body.total_requests)).toBeGreaterThanOrEqual(1);
+
+      // The SAME booking must never show up under Prof. Iyer's own stats —
+      // this is a self-service endpoint, always scoped to req.user!.id.
+      const iyer = await request(app).get('/api/faculty/me/stats').set(OTHER_FACULTY);
+      expect(iyer.status).toBe(200);
+      expect(Number(iyer.body.total_requests)).toBe(0);
     });
   });
 
