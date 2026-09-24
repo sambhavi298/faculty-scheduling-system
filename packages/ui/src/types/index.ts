@@ -20,7 +20,7 @@ export type AppointmentStatus =
   | 'MISSED'
   | 'EXPIRED';
 
-export type UserRole = 'STUDENT' | 'FACULTY';
+export type UserRole = 'STUDENT' | 'FACULTY' | 'ADMIN';
 
 /** Exact shape of a row returned by every appointment endpoint (services/api/src/repositories/appointment.repository.ts AppointmentRow). */
 export interface AppointmentRow {
@@ -113,12 +113,181 @@ export class ApiError extends Error {
   }
 }
 
-/** The identity the frontend holds locally and sends as X-User-Id / X-User-Role (services/api/src/middleware/identify.middleware.ts — a temporary stand-in for real authentication, not a security boundary this frontend can strengthen on its own). */
+/**
+ * The identity the frontend holds locally, backed by a real JWT issued by
+ * POST /api/auth/login (services/api/src/services/auth.service.ts). `token`
+ * is sent as `Authorization: Bearer <token>` on every request from
+ * api/client.ts — this replaced the old X-User-Id/X-User-Role header-trust
+ * scheme entirely; the backend's identify.middleware.ts no longer accepts
+ * those headers at all.
+ */
 export interface Session {
-  userId: string;
+  token: string;
+  id: string;
   role: UserRole;
-  /** Display-only label the person typed at login; never sent to the backend. */
-  displayName?: string;
+  fullName: string;
+  email: string;
+}
+
+/** Body for POST /api/auth/login (services/api/src/controllers/auth.controller.ts). */
+export interface LoginBody {
+  email: string;
+  password: string;
+}
+
+/** Exact shape of POST /api/auth/login's response (services/api/src/services/auth.service.ts LoginResult). */
+export interface LoginResult {
+  token: string;
+  user: {
+    id: string;
+    role: UserRole;
+    fullName: string;
+    email: string;
+  };
+}
+
+// ---- Faculty Availability (write side) ----
+// Mirrored from services/api/src/repositories/faculty-availability.repository.ts
+
+export interface FacultyAvailabilityWindowRow {
+  id: string;
+  faculty_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  effective_from: string;
+  effective_until: string | null;
+  is_active: boolean;
+}
+
+/** Body for one entry of PUT /api/faculty/availability's array body. */
+export interface AvailabilityWindowInput {
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  effectiveFrom: string;
+  effectiveUntil?: string | null;
+}
+
+export type ExceptionType = 'LEAVE' | 'MEETING' | 'BLOCK' | 'EXTRA_AVAILABLE';
+
+export interface FacultyScheduleExceptionRow {
+  id: string;
+  faculty_id: string;
+  exception_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  exception_type: string;
+  reason: string | null;
+  created_at: string;
+}
+
+/** Body for POST /api/faculty/availability/exceptions. */
+export interface ExceptionInput {
+  date: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  type: ExceptionType;
+  reason?: string | null;
+}
+
+// ---- Admin & Reporting ----
+// Mirrored from services/api/src/repositories/admin.repository.ts and
+// services/api/src/services/admin.service.ts
+
+export interface DepartmentRow {
+  id: number;
+  name: string;
+  code: string;
+}
+
+export interface BatchRow {
+  id: number;
+  department_id: number;
+  name: string;
+  academic_year: string;
+}
+
+export interface AdminFacultyRow {
+  id: string;
+  email: string;
+  full_name: string;
+  phone: string | null;
+  department_id: number;
+  staff_code: string;
+  office_location: string | null;
+}
+
+export interface AdminStudentRow {
+  id: string;
+  email: string;
+  full_name: string;
+  phone: string | null;
+  batch_id: number;
+  roll_number: string;
+}
+
+/** Row shape returned by GET /api/admin/appointments — an AppointmentRow plus two joined names, not a plain AppointmentRow. */
+export interface AdminAppointmentRow extends AppointmentRow {
+  faculty_name: string;
+  student_name: string;
+}
+
+export interface AuditLogRow {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  actor_id: string | null;
+  old_data: unknown;
+  new_data: unknown;
+  created_at: string;
+}
+
+export interface DashboardCounts {
+  total_students: number;
+  total_faculty: number;
+  total_departments: number;
+  pending_appointments: number;
+  approved_appointments: number;
+  completed_appointments: number;
+}
+
+export interface FacultyStatsRow {
+  faculty_id: string;
+  full_name: string;
+  completed_count: number;
+  missed_count: number;
+  rejected_count: number;
+  cancelled_count: number;
+  avg_response_minutes: number | null;
+  total_requests: number;
+}
+
+export interface DashboardResponse {
+  counts: DashboardCounts;
+  facultyStats: FacultyStatsRow[];
+}
+
+export interface WorkloadReportRow {
+  faculty_id: string;
+  full_name: string;
+  week_start: string;
+  appointments_that_week: number;
+  workload_rank: number;
+  running_total_this_semester: number;
+}
+
+/**
+ * Returned once, at creation time only, by POST /api/admin/faculty and
+ * POST /api/admin/students (services/api/src/services/admin.service.ts
+ * CreatedAccount<T>) — the new account's real bcrypt-hashed temporary
+ * password, in plaintext, exactly once. Never retrievable again after this
+ * response — the admin must relay it to the new user out of band.
+ */
+export interface CreatedAccount<T> {
+  account: T;
+  temporaryPassword: string;
 }
 
 /** The valid status transition table, mirrored exactly from services/api/src/domain/appointment-state-machine.ts so the UI can fail fast/disable actions consistently with what the database will actually allow — never as a replacement for the backend's own guard. */

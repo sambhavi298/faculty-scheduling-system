@@ -70,6 +70,49 @@ describe('Faculty Availability write HTTP layer (integration — real Express ap
     await pool.query('DELETE FROM faculty_schedule_exceptions WHERE faculty_id = $1', [TEST_FACULTY_ID]);
   });
 
+  describe('GET /api/faculty/availability', () => {
+    it('returns 401 without a token', async () => {
+      const res = await request(app).get('/api/faculty/availability');
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 403 for a STUDENT caller', async () => {
+      const res = await request(app).get('/api/faculty/availability').set(STUDENT);
+      expect(res.status).toBe(403);
+    });
+
+    it('returns an empty array when the caller has no declared availability', async () => {
+      const res = await request(app).get('/api/faculty/availability').set(FACULTY);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+    });
+
+    it("returns the CALLER's own currently-active windows after a PUT", async () => {
+      await request(app)
+        .put('/api/faculty/availability')
+        .set(FACULTY)
+        .send([{ dayOfWeek: 2, startTime: '09:00', endTime: '17:00', effectiveFrom: '2026-08-01' }]);
+
+      const res = await request(app).get('/api/faculty/availability').set(FACULTY);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0]).toMatchObject({ faculty_id: TEST_FACULTY_ID, day_of_week: 2 });
+    });
+
+    it("never returns another faculty member's availability", async () => {
+      await request(app)
+        .put('/api/faculty/availability')
+        .set(FACULTY)
+        .send([{ dayOfWeek: 2, startTime: '09:00', endTime: '17:00', effectiveFrom: '2026-08-01' }]);
+
+      const res = await request(app).get('/api/faculty/availability').set(bearer('200', 'FACULTY'));
+
+      expect(res.status).toBe(200);
+      expect(res.body.every((row: { faculty_id: string }) => row.faculty_id !== TEST_FACULTY_ID)).toBe(true);
+    });
+  });
+
   describe('PUT /api/faculty/availability', () => {
     it('returns 401 without a token', async () => {
       const res = await request(app).put('/api/faculty/availability').send([]);

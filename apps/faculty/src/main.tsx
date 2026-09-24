@@ -9,7 +9,7 @@ document.documentElement.classList.add('theme-faculty');
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <SessionProvider storageKey="faculty-session">
+    <SessionProvider storageKey="faculty-session" allowedRoles={['FACULTY']}>
       <ToastProvider>
         <BrowserRouter>
           <App />

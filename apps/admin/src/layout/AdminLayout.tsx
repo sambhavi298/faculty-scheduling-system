@@ -11,8 +11,7 @@ import {
   Activity,
   ShieldCheck,
 } from 'lucide-react';
-import { AppShell, type NavItem } from '@faculty-scheduling/ui';
-import { useAdminSession } from '../session/AdminSessionContext';
+import { AppShell, useSession, type NavItem } from '@faculty-scheduling/ui';
 
 // packages/ui's NavItem.icon / AppShell brandIcon are typed
 // `React.ComponentType<{ size?: number | string }>`, matching lucide-react's
@@ -36,7 +35,7 @@ export const ADMIN_NAV_ITEMS: (NavItem & { headerTitle: string })[] = [
 const BrandIcon = ShieldCheck;
 
 export function AdminLayout(): React.ReactElement {
-  const { session, logout } = useAdminSession();
+  const { session, logout } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -55,7 +54,7 @@ export function AdminLayout(): React.ReactElement {
       appSubtitle="Faculty Appointment Scheduling"
       navItems={ADMIN_NAV_ITEMS}
       headerTitle={current.headerTitle}
-      sessionLabel={session?.name ?? 'Admin'}
+      sessionLabel={session ? `${session.fullName} · ${session.email}` : 'Admin'}
       onLogout={handleLogout}
       brandIcon={BrandIcon}
     >

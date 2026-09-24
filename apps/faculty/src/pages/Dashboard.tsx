@@ -5,41 +5,37 @@ import {
   appointmentsApi,
   ErrorState,
   LoadingState,
-  NoticeBanner,
   PageHeader,
   StatCard,
   StatGrid,
-  readCache,
   useSession,
+  type AppointmentRow,
   type FacultyPendingRequestRow,
 } from '@faculty-scheduling/ui';
+
+const HISTORY_STATUSES = new Set(['COMPLETED', 'MISSED', 'REJECTED', 'CANCELLED', 'EXPIRED']);
 
 type LoadState =
   | { status: 'loading' }
   | { status: 'error'; error: unknown }
-  | { status: 'ready'; rows: FacultyPendingRequestRow[] };
+  | { status: 'ready'; pending: FacultyPendingRequestRow[]; all: AppointmentRow[] };
 
 export function Dashboard(): React.ReactElement {
   const { session } = useSession();
-  const userId = session!.userId;
+  const userId = session!.id;
   const [state, setState] = useState<LoadState>({ status: 'loading' });
-  const [upcomingCount, setUpcomingCount] = useState(0);
-  const [historyCount, setHistoryCount] = useState(0);
 
   function load(): void {
     setState({ status: 'loading' });
-    appointmentsApi
-      .listPending()
-      .then((rows) => setState({ status: 'ready', rows }))
+    Promise.all([appointmentsApi.listPending(), appointmentsApi.listMineAsFaculty()])
+      .then(([pending, all]) => setState({ status: 'ready', pending, all }))
       .catch((error: unknown) => setState({ status: 'error', error }));
   }
 
   useEffect(load, [userId]);
 
-  useEffect(() => {
-    setUpcomingCount(readCache('faculty:upcoming', userId).length);
-    setHistoryCount(readCache('faculty:history', userId).length);
-  }, [userId, state.status]);
+  const upcomingCount = state.status === 'ready' ? state.all.filter((r) => r.status === 'APPROVED').length : 0;
+  const historyCount = state.status === 'ready' ? state.all.filter((r) => HISTORY_STATUSES.has(r.status)).length : 0;
 
   return (
     <div>
@@ -57,22 +53,15 @@ export function Dashboard(): React.ReactElement {
       {state.status === 'error' && <ErrorState error={state.error} onRetry={load} />}
 
       {state.status === 'ready' && (
-        <>
-          <StatGrid>
-            <StatCard
-              label="Pending requests"
-              value={state.rows.length}
-              hint={state.rows.length > 0 ? 'Awaiting your decision' : 'Nothing waiting on you'}
-            />
-            <StatCard label="Upcoming (this device)" value={upcomingCount} hint="Approved appointments cached locally" />
-            <StatCard label="History (this device)" value={historyCount} hint="Completed / missed / rejected / cancelled" />
-          </StatGrid>
-
-          <NoticeBanner>
-            The "Upcoming" and "History" counts above come from a local, per-device cache, not from the server —
-            see the notice on those pages for why. The "Pending requests" count is always live from the server.
-          </NoticeBanner>
-        </>
+        <StatGrid>
+          <StatCard
+            label="Pending requests"
+            value={state.pending.length}
+            hint={state.pending.length > 0 ? 'Awaiting your decision' : 'Nothing waiting on you'}
+          />
+          <StatCard label="Upcoming" value={upcomingCount} hint="Approved appointments" />
+          <StatCard label="History" value={historyCount} hint="Completed / missed / rejected / cancelled" />
+        </StatGrid>
       )}
     </div>
   );

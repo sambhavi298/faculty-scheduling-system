@@ -41,6 +41,19 @@ describe('FacultyAvailabilityService (unit — mocked FacultyAvailabilityReposit
     return { repo, service };
   }
 
+  describe('listActiveWindows', () => {
+    it('passes through the repository result unchanged', async () => {
+      const { repo, service } = fakeService();
+      const rows = [windowRow(), windowRow({ id: '2', day_of_week: 4 })];
+      repo.listActiveWindows.mockResolvedValueOnce(rows);
+
+      const result = await service.listActiveWindows('200');
+
+      expect(result).toEqual(rows);
+      expect(repo.listActiveWindows).toHaveBeenCalledWith('200');
+    });
+  });
+
   describe('replaceAvailability', () => {
     it('throws NotFoundError when the faculty id does not exist, without ever calling replaceAvailability', async () => {
       const { repo, service } = fakeService();

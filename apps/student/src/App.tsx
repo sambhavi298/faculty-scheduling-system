@@ -27,7 +27,7 @@ function AuthenticatedLayout(): React.ReactElement {
     navigate('/login', { replace: true });
   }
 
-  const sessionLabel = session?.displayName ? `${session.displayName} (${session.userId})` : `Student ${session?.userId ?? ''}`;
+  const sessionLabel = session ? `${session.fullName} (${session.email})` : 'Student';
 
   return (
     <AppShell

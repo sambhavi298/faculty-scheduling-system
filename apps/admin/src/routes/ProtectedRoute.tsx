@@ -1,14 +1,10 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAdminSession } from '../session/AdminSessionContext';
+import { useSession } from '@faculty-scheduling/ui';
 
-/**
- * Gates every real admin route behind the local entry gate at `/login`.
- * There is no real authentication to check here (see AdminSessionContext) —
- * this only ensures the app has a display label before showing the shell.
- */
+/** Gates every real admin route behind a real ADMIN-only session (see main.tsx's SessionProvider allowedRoles=['ADMIN']). */
 export function ProtectedRoute({ children }: { children: React.ReactNode }): React.ReactElement {
-  const { session } = useAdminSession();
+  const { session } = useSession();
   const location = useLocation();
 
   if (!session) {

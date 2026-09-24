@@ -14,7 +14,7 @@ if (!container) {
 
 ReactDOM.createRoot(container).render(
   <React.StrictMode>
-    <SessionProvider storageKey="student-session">
+    <SessionProvider storageKey="student-session" allowedRoles={['STUDENT']}>
       <ToastProvider>
         <BrowserRouter>
           <App />

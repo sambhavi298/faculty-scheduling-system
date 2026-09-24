@@ -4,12 +4,16 @@ import { ApiError } from '../types';
 /**
  * Thin fetch wrapper for the real backend (services/api). Every call goes to
  * `/api/...` — in dev, each app's vite.config.ts proxies `/api` to
- * `http://localhost:3000` (the backend has no CORS middleware, so a direct
- * cross-origin browser call from a Vite dev server would be blocked; the
- * proxy keeps everything same-origin without touching backend code). In a
- * production build, this app must be served from the same origin as the API,
- * or behind a reverse proxy that forwards /api — see the migration report's
- * "Remaining backend dependencies" section.
+ * `http://localhost:3000`; in a production build, this app must be served
+ * from the same origin as the API, or behind a reverse proxy that forwards
+ * /api, OR rely on the backend's own CORS allowlist middleware
+ * (services/api/src/middleware/cors.middleware.ts, CORS_ALLOWED_ORIGINS) for
+ * a genuine cross-origin deployment.
+ *
+ * Identity is a real JWT (`Authorization: Bearer <token>`, from
+ * POST /api/auth/login), attached below whenever a session is set —
+ * services/api/src/middleware/identify.middleware.ts verifies it
+ * server-side and no longer accepts any other form of identity.
  *
  * This file talks to the API surface exactly as services/api/src exposes it
  * today. It does not call, guess at, or stub any endpoint that isn't real.
@@ -29,8 +33,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
   if (currentSession) {
-    headers.set('X-User-Id', currentSession.userId);
-    headers.set('X-User-Role', currentSession.role);
+    headers.set('Authorization', `Bearer ${currentSession.token}`);
   }
 
   let res: Response;
@@ -68,6 +71,8 @@ export const apiClient = {
   get: <T>(path: string) => request<T>(path, { method: 'GET' }),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }),
+  put: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'PUT', body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PATCH', body: body !== undefined ? JSON.stringify(body) : undefined }),
 };

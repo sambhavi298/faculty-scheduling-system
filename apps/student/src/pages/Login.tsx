@@ -2,31 +2,45 @@ import React, { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
-import { Button, Field, Input, useSession } from '@faculty-scheduling/ui';
+import { ApiError, Button, Field, Input, useSession } from '@faculty-scheduling/ui';
+import { describeError } from '../utils/errors';
+
+/** UNAUTHENTICATED from the shared error map reads as "session expired," which is right everywhere else but wrong on this screen — here it can only mean the email/password didn't match. */
+function describeLoginError(err: unknown): string {
+  if (err instanceof ApiError && err.code === 'UNAUTHENTICATED') {
+    return 'Incorrect email or password.';
+  }
+  return describeError(err);
+}
 
 /**
- * Dev-login screen. There is no password and no server-side verification —
- * services/api/src/middleware/identify.middleware.ts trusts whatever
- * X-User-Id / X-User-Role this app sends, so this form is honestly labelled
- * as a temporary identity scheme, not a real login.
+ * Real login screen — POST /api/auth/login (services/api/src/routes/auth.routes.ts),
+ * bcrypt-verified password, a real JWT stored for every subsequent request.
  */
 export function Login(): React.ReactElement {
   const { login } = useSession();
   const navigate = useNavigate();
-  const [studentId, setStudentId] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: FormEvent): void {
+  async function handleSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
-    const trimmed = studentId.trim();
-    if (!trimmed) {
-      setError('Enter your student ID to continue.');
+    if (!email.trim() || !password) {
+      setError('Enter your email and password to continue.');
       return;
     }
     setError('');
-    login(trimmed, 'STUDENT', displayName);
-    navigate('/', { replace: true });
+    setSubmitting(true);
+    try {
+      await login(email.trim(), password);
+      navigate('/', { replace: true });
+    } catch (err) {
+      setError(describeLoginError(err));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -43,40 +57,34 @@ export function Login(): React.ReactElement {
         </div>
 
         <form onSubmit={handleSubmit} noValidate>
-          <Field
-            label="Student ID"
-            htmlFor="studentId"
-            error={error || undefined}
-            hint={error ? undefined : 'Whatever ID your faculty knows you by, e.g. your roll number.'}
-          >
+          <Field label="Email" htmlFor="email" error={error || undefined}>
             <Input
-              id="studentId"
-              value={studentId}
-              onChange={(e) => setStudentId(e.target.value)}
-              placeholder="e.g. 100"
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@srmist.edu.in"
               invalid={!!error}
               autoFocus
+              autoComplete="username"
             />
           </Field>
 
-          <Field label="Display name (optional)" htmlFor="displayName" hint="Shown only to you in this browser — never sent to the server.">
+          <Field label="Password" htmlFor="password">
             <Input
-              id="displayName"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="e.g. Priya"
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
             />
           </Field>
 
-          <Button type="submit" style={{ width: '100%' }}>
-            Continue
+          <Button type="submit" style={{ width: '100%' }} loading={submitting}>
+            Log in
           </Button>
         </form>
-
-        <p className="auth-card__notice">
-          This is a temporary, unverified identity scheme used during development — there is no password, and the
-          backend trusts whatever ID and role this form sends as-is. It is not a real login.
-        </p>
       </div>
     </div>
   );

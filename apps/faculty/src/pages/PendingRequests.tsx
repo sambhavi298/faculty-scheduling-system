@@ -10,7 +10,6 @@ import {
   LoadingState,
   PageHeader,
   formatSlot,
-  upsertCache,
   useSession,
   useToast,
   type FacultyPendingRequestRow,
@@ -24,7 +23,7 @@ type LoadState =
 
 export function PendingRequests(): React.ReactElement {
   const { session } = useSession();
-  const userId = session!.userId;
+  const userId = session!.id;
   const { show } = useToast();
 
   const [state, setState] = useState<LoadState>({ status: 'loading' });
@@ -50,8 +49,7 @@ export function PendingRequests(): React.ReactElement {
     setActingOnId(row.id);
     setRowErrors((prev) => ({ ...prev, [row.id]: '' }));
     try {
-      const updated = await appointmentsApi.approve(row.id);
-      upsertCache('faculty:upcoming', userId, updated);
+      await appointmentsApi.approve(row.id);
       removeRow(row.id);
       show('Request approved.', 'success');
     } catch (error) {

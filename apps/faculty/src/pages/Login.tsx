@@ -1,25 +1,41 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserCog } from 'lucide-react';
-import { Button, Card, Field, Input, useSession } from '@faculty-scheduling/ui';
+import { ApiError, Button, Card, Field, Input, useSession } from '@faculty-scheduling/ui';
+import { describeError } from '../lib/errorMessage';
+
+/** UNAUTHENTICATED reads as "session expired" everywhere else in this app — here it can only mean the email/password didn't match. */
+function describeLoginError(err: unknown): string {
+  if (err instanceof ApiError && err.code === 'UNAUTHENTICATED') {
+    return 'Incorrect email or password.';
+  }
+  return describeError(err);
+}
 
 export function Login(): React.ReactElement {
   const { login } = useSession();
   const navigate = useNavigate();
-  const [facultyId, setFacultyId] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: React.FormEvent): void {
+  async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    const trimmedId = facultyId.trim();
-    if (!trimmedId) {
-      setError('Enter a faculty ID to continue.');
+    if (!email.trim() || !password) {
+      setError('Enter your email and password to continue.');
       return;
     }
     setError(null);
-    login(trimmedId, 'FACULTY', displayName);
-    navigate('/', { replace: true });
+    setSubmitting(true);
+    try {
+      await login(email.trim(), password);
+      navigate('/', { replace: true });
+    } catch (err) {
+      setError(describeLoginError(err));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -35,38 +51,35 @@ export function Login(): React.ReactElement {
           </div>
         </div>
 
-        <p className="login-card__notice">
-          This is a temporary, unverified identity scheme for the project's current build — there is no
-          password, and the backend does not yet check that this ID really belongs to you
-          (<code>services/api/src/middleware/identify.middleware.ts</code>). Whatever ID you enter is sent as
-          <code>X-User-Id</code> on every request and treated as your identity.
-        </p>
-
         <form onSubmit={handleSubmit}>
-          <Field label="Faculty ID" htmlFor="facultyId" hint="e.g. 200 — must match a seeded faculty id in the database." error={error ?? undefined}>
+          <Field label="Email" htmlFor="email" error={error ?? undefined}>
             <Input
-              id="facultyId"
-              name="facultyId"
+              id="email"
+              name="email"
+              type="email"
               autoFocus
-              placeholder="200"
-              value={facultyId}
-              onChange={(e) => setFacultyId(e.target.value)}
+              placeholder="you@srmist.edu.in"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               invalid={Boolean(error)}
+              autoComplete="username"
             />
           </Field>
 
-          <Field label="Display name (optional)" htmlFor="displayName" hint="Shown only in this browser — never sent to the backend.">
+          <Field label="Password" htmlFor="password">
             <Input
-              id="displayName"
-              name="displayName"
-              placeholder="Prof. K. Rao"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+              id="password"
+              name="password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
             />
           </Field>
 
-          <Button type="submit" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>
-            Continue
+          <Button type="submit" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }} loading={submitting}>
+            Log in
           </Button>
         </form>
       </Card>

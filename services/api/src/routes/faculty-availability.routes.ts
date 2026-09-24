@@ -6,6 +6,7 @@ import { requireRole } from '../middleware/identify.middleware';
 export function createFacultyAvailabilityRouter(controller: FacultyAvailabilityController): Router {
   const router = Router();
 
+  router.get('/faculty/availability', requireRole('FACULTY'), controller.listOwnAvailability);
   router.put('/faculty/availability', requireRole('FACULTY'), controller.replaceAvailability);
   router.post('/faculty/availability/exceptions', requireRole('FACULTY'), controller.addException);
 

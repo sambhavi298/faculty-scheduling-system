@@ -57,6 +57,22 @@ export interface ExceptionRequest {
 export class FacultyAvailabilityService {
   constructor(private readonly repo: FacultyAvailabilityRepository) {}
 
+  /**
+   * Backs `GET /api/faculty/availability` — the read-side counterpart to
+   * `replaceAvailability` below, added for the same reason
+   * `listAllForFaculty` was added to AppointmentService: a PUT-replace
+   * endpoint with no way to read what it would replace isn't genuinely
+   * usable (a client can't safely show "your current availability" before
+   * letting someone edit and resubmit it). One-line delegation, same shape
+   * as every other pure-passthrough method in this codebase (Level 5's
+   * uniform Controller -> Service -> Repository layering) — no business
+   * rule to enforce, a faculty member may always see their own active
+   * windows.
+   */
+  async listActiveWindows(facultyId: string): Promise<FacultyAvailabilityWindowRow[]> {
+    return this.repo.listActiveWindows(facultyId);
+  }
+
   async replaceAvailability(facultyId: string, windowsInput: unknown): Promise<FacultyAvailabilityWindowRow[]> {
     if (!(await this.repo.facultyExists(facultyId))) {
       throw new NotFoundError('No faculty member exists with that id.');

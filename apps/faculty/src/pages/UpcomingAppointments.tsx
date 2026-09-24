@@ -1,18 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCheck, AlertTriangle, Ban, MonitorSmartphone } from 'lucide-react';
+import { CheckCheck, AlertTriangle, Ban } from 'lucide-react';
 import {
   appointmentsApi,
   Button,
   Card,
   ConfirmDialog,
   EmptyState,
-  NoticeBanner,
+  ErrorState,
+  LoadingState,
   PageHeader,
   Textarea,
   formatSlot,
-  readCache,
-  removeFromCache,
-  upsertCache,
   useSession,
   useToast,
   type AppointmentRow,
@@ -25,33 +23,41 @@ interface DialogState {
   row: AppointmentRow;
 }
 
+type LoadState =
+  | { status: 'loading' }
+  | { status: 'error'; error: unknown }
+  | { status: 'ready'; rows: AppointmentRow[] };
+
+/** GET /api/appointments/mine-as-faculty?status=APPROVED — real, server-side, every device. */
 export function UpcomingAppointments(): React.ReactElement {
   const { session } = useSession();
-  const userId = session!.userId;
+  const userId = session!.id;
   const { show } = useToast();
 
-  const [rows, setRows] = useState<AppointmentRow[]>([]);
+  const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function refresh(): void {
-    setRows(readCache('faculty:upcoming', userId));
+  function load(): void {
+    setState({ status: 'loading' });
+    appointmentsApi
+      .listMineAsFaculty('APPROVED')
+      .then((rows) => setState({ status: 'ready', rows }))
+      .catch((err: unknown) => setState({ status: 'error', error: err }));
   }
 
-  useEffect(refresh, [userId]);
+  useEffect(load, [userId]);
+
+  function removeRow(id: string): void {
+    setState((cur) => (cur.status === 'ready' ? { status: 'ready', rows: cur.rows.filter((r) => r.id !== id) } : cur));
+  }
 
   function openDialog(kind: DialogKind, row: AppointmentRow): void {
     setNotes('');
     setError(null);
     setDialog({ kind, row });
-  }
-
-  function moveToHistory(row: AppointmentRow): void {
-    removeFromCache('faculty:upcoming', userId, row.id);
-    upsertCache('faculty:history', userId, row);
-    refresh();
   }
 
   async function handleConfirm(): Promise<void> {
@@ -60,15 +66,14 @@ export function UpcomingAppointments(): React.ReactElement {
     setBusy(true);
     setError(null);
     try {
-      let updated: AppointmentRow;
       if (kind === 'complete') {
-        updated = await appointmentsApi.complete(row.id, notes.trim() ? { notes: notes.trim() } : undefined);
+        await appointmentsApi.complete(row.id, notes.trim() ? { notes: notes.trim() } : undefined);
       } else if (kind === 'missed') {
-        updated = await appointmentsApi.markMissed(row.id);
+        await appointmentsApi.markMissed(row.id);
       } else {
-        updated = await appointmentsApi.cancel(row.id);
+        await appointmentsApi.cancel(row.id);
       }
-      moveToHistory(updated);
+      removeRow(row.id);
       show(
         kind === 'complete' ? 'Marked as completed.' : kind === 'missed' ? 'Marked as missed.' : 'Appointment cancelled.',
         'success'
@@ -82,6 +87,7 @@ export function UpcomingAppointments(): React.ReactElement {
     }
   }
 
+  const rows = state.status === 'ready' ? state.rows : [];
   const sorted = [...rows].sort((a, b) => {
     const aStart = a.slot.match(/[[(]"?([^",]+)/)?.[1];
     const bStart = b.slot.match(/[[(]"?([^",]+)/)?.[1];
@@ -92,21 +98,14 @@ export function UpcomingAppointments(): React.ReactElement {
     <div>
       <PageHeader title="Upcoming Appointments" subtitle="Approved appointments you can mark complete, missed, or cancel." />
 
-      <NoticeBanner icon={<MonitorSmartphone size={16} />}>
-        This list only shows appointments <strong>this device</strong> has seen — the backend doesn't yet have an
-        endpoint that lists all of a faculty member's non-pending appointments. Every row here is real data from an
-        action you (or this device) actually performed; it will be incomplete if you use another device or browser,
-        or if you cleared site data.
-      </NoticeBanner>
+      {state.status === 'loading' && <LoadingState label="Loading upcoming appointments…" />}
+      {state.status === 'error' && <ErrorState error={state.error} onRetry={load} />}
 
-      {rows.length === 0 && (
-        <EmptyState
-          title="No upcoming appointments yet"
-          description="Approve a pending request to see it here, or check another device where you approved one."
-        />
+      {state.status === 'ready' && rows.length === 0 && (
+        <EmptyState title="No upcoming appointments" description="Approve a pending request to see it here." />
       )}
 
-      {rows.length > 0 && (
+      {state.status === 'ready' && rows.length > 0 && (
         <div className="request-list">
           {sorted.map((row) => (
             <Card key={row.id}>

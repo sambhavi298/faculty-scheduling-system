@@ -1,29 +1,31 @@
 import React, { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { ShieldCheck, AlertTriangle, ArrowRight } from 'lucide-react';
-import { Button, Field, Input } from '@faculty-scheduling/ui';
-import { useAdminSession } from '../session/AdminSessionContext';
+import { ShieldCheck, ArrowRight } from 'lucide-react';
+import { ApiError, Button, Field, Input, useSession } from '@faculty-scheduling/ui';
 
 interface LocationState {
   from?: { pathname: string };
 }
 
-/**
- * The honest local entry gate for the admin app.
- *
- * This is NOT a login — there is nothing to authenticate against. The
- * backend's identify middleware (services/api/src/middleware/identify.middleware.ts)
- * only recognizes STUDENT and FACULTY; there is no ADMIN role at all. Typing
- * a name here only stores a display label in this browser's localStorage so
- * the app shell has something to show in its header — it is never sent to
- * the backend as any header or credential.
- */
+function describeLoginError(err: unknown): string {
+  if (err instanceof ApiError && err.code === 'UNAUTHENTICATED') {
+    return 'Incorrect email or password.';
+  }
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error) return err.message;
+  return 'Something went wrong. Please try again.';
+}
+
+/** Real login — POST /api/auth/login. Only an account with role ADMIN is accepted here (see main.tsx's SessionProvider allowedRoles=['ADMIN']); any other real account is rejected with a clear message rather than silently granted admin access. */
 export function Login(): React.ReactElement {
-  const { session, login } = useAdminSession();
+  const { session, login } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
-  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   if (session) {
     const state = location.state as LocationState | null;
@@ -31,11 +33,22 @@ export function Login(): React.ReactElement {
     return <Navigate to={redirectTo} replace />;
   }
 
-  const handleSubmit = (event: FormEvent): void => {
+  const handleSubmit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    if (!name.trim()) return;
-    login(name);
-    navigate('/', { replace: true });
+    if (!email.trim() || !password) {
+      setError('Enter your email and password to continue.');
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      await login(email.trim(), password);
+      navigate('/', { replace: true });
+    } catch (err) {
+      setError(describeLoginError(err));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -52,33 +65,36 @@ export function Login(): React.ReactElement {
         </div>
 
         <form onSubmit={handleSubmit}>
-          <Field label="Admin name / label" htmlFor="admin-name" hint="Shown in the app header only — not a real account.">
+          <Field label="Email" htmlFor="admin-email" error={error ?? undefined}>
             <Input
-              id="admin-name"
-              name="admin-name"
+              id="admin-email"
+              name="admin-email"
+              type="email"
               autoFocus
-              placeholder="e.g. Izhaan"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
+              placeholder="admin@srmist.edu.in"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              invalid={Boolean(error)}
+              autoComplete="username"
             />
           </Field>
 
-          <Button type="submit" style={{ width: '100%' }} disabled={!name.trim()}>
-            Continue <ArrowRight size={16} />
+          <Field label="Password" htmlFor="admin-password">
+            <Input
+              id="admin-password"
+              name="admin-password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+            />
+          </Field>
+
+          <Button type="submit" style={{ width: '100%' }} loading={submitting}>
+            Log in <ArrowRight size={16} />
           </Button>
         </form>
-
-        <div className="auth-card__notice">
-          <div className="row gap-sm" style={{ alignItems: 'flex-start' }}>
-            <AlertTriangle size={15} style={{ color: 'var(--accent-warning)', flexShrink: 0, marginTop: '0.15rem' }} />
-            <span>
-              The backend doesn&apos;t yet support an admin role or any admin endpoints — this is a local-only label so
-              the app has something to display in the header, not a real login. Nothing you type here is sent to the
-              server.
-            </span>
-          </div>
-        </div>
       </div>
     </div>
   );

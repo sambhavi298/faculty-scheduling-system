@@ -4,6 +4,16 @@ import { FacultyAvailabilityService } from '../services/faculty-availability.ser
 /** Thin HTTP adapter — same shape as every other controller in this codebase. Both endpoints act on the AUTHENTICATED caller's own faculty id (req.user!.id), never a path or body id, matching the "own availability only" scope in the Level 5 API contract table. */
 export function createFacultyAvailabilityController(service: FacultyAvailabilityService) {
   return {
+    /** GET /api/faculty/availability — Faculty only. Lists the caller's own currently-active declared windows (the read-side counterpart to the PUT below). */
+    async listOwnAvailability(req: Request, res: Response, next: NextFunction): Promise<void> {
+      try {
+        const rows = await service.listActiveWindows(req.user!.id);
+        res.status(200).json(rows);
+      } catch (err) {
+        next(err);
+      }
+    },
+
     /** PUT /api/faculty/availability — Faculty only. Body: an array of {dayOfWeek, startTime, endTime, effectiveFrom, effectiveUntil?}, replacing the caller's ENTIRE declared availability set. */
     async replaceAvailability(req: Request, res: Response, next: NextFunction): Promise<void> {
       try {

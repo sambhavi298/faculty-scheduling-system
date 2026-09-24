@@ -33,7 +33,7 @@ export function Layout(): React.ReactElement {
   }
 
   const headerTitle = TITLES[location.pathname] ?? 'Faculty Portal';
-  const sessionLabel = session.displayName ? `${session.displayName} · #${session.userId}` : `Faculty #${session.userId}`;
+  const sessionLabel = `${session.fullName} · ${session.email}`;
 
   return (
     <AppShell

@@ -17,6 +17,10 @@ export const appointmentsApi = {
   /** GET /api/appointments/pending — Faculty only. Returns the faculty_pending_requests view's shape, not a raw AppointmentRow — see FacultyPendingRequestRow. */
   listPending: (): Promise<FacultyPendingRequestRow[]> => apiClient.get('/api/appointments/pending'),
 
+  /** GET /api/appointments/mine-as-faculty — Faculty only. Every status, not just PENDING; optional single-status filter. */
+  listMineAsFaculty: (status?: string): Promise<AppointmentRow[]> =>
+    apiClient.get(`/api/appointments/mine-as-faculty${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+
   /** PATCH /api/appointments/:id/approve — Faculty, must own. */
   approve: (id: string): Promise<AppointmentRow> => apiClient.patch(`/api/appointments/${id}/approve`),
 
