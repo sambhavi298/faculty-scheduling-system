@@ -51,7 +51,7 @@ describe('Student Login', () => {
 
   it('renders the login form', () => {
     renderLogin();
-    expect(screen.getByLabelText('Email')).toBeInTheDocument();
+    expect(screen.getByLabelText('Registration Number')).toBeInTheDocument();
     expect(screen.getByLabelText('Password')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /log in/i })).toBeInTheDocument();
   });
@@ -64,11 +64,11 @@ describe('Student Login', () => {
 
     await user.click(screen.getByRole('button', { name: /log in/i }));
 
-    expect(await screen.findByText(/enter your email and password/i)).toBeInTheDocument();
+    expect(await screen.findByText(/enter your registration number and password/i)).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('calls POST /api/auth/login with the entered credentials and stores the returned session on success', async () => {
+  it('calls POST /api/auth/login with the entered registration number and stores the returned session on success', async () => {
     mockFetchOnce(200, {
       token: 'fake.jwt.token',
       user: { id: '100', role: 'STUDENT', fullName: 'Alice Student', email: 'alice@example.edu' },
@@ -76,7 +76,7 @@ describe('Student Login', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    await user.type(screen.getByLabelText('Email'), 'alice@example.edu');
+    await user.type(screen.getByLabelText('Registration Number'), 'CSE2026-001');
     await user.type(screen.getByLabelText('Password'), 'Password123!');
     await user.click(screen.getByRole('button', { name: /log in/i }));
 
@@ -85,7 +85,7 @@ describe('Student Login', () => {
         '/api/auth/login',
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ email: 'alice@example.edu', password: 'Password123!' }),
+          body: JSON.stringify({ identifier: 'CSE2026-001', password: 'Password123!' }),
         })
       );
     });
@@ -96,16 +96,16 @@ describe('Student Login', () => {
     });
   });
 
-  it('shows "Incorrect email or password" — not the generic session-expired copy — on a 401 UNAUTHENTICATED response', async () => {
+  it('shows "Incorrect registration number or password" — not the generic session-expired copy — on a 401 UNAUTHENTICATED response', async () => {
     mockFetchOnce(401, { error: 'UNAUTHENTICATED', message: 'Invalid credentials' });
     const user = userEvent.setup();
     renderLogin();
 
-    await user.type(screen.getByLabelText('Email'), 'alice@example.edu');
+    await user.type(screen.getByLabelText('Registration Number'), 'CSE2026-001');
     await user.type(screen.getByLabelText('Password'), 'wrong-password');
     await user.click(screen.getByRole('button', { name: /log in/i }));
 
-    expect(await screen.findByText('Incorrect email or password.')).toBeInTheDocument();
+    expect(await screen.findByText('Incorrect registration number or password.')).toBeInTheDocument();
     expect(localStorage.getItem('student-session-test')).toBeNull();
   });
 
@@ -117,7 +117,7 @@ describe('Student Login', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    await user.type(screen.getByLabelText('Email'), 'prof.rao@example.edu');
+    await user.type(screen.getByLabelText('Registration Number'), 'CSE-F01');
     await user.type(screen.getByLabelText('Password'), 'Password123!');
     await user.click(screen.getByRole('button', { name: /log in/i }));
 

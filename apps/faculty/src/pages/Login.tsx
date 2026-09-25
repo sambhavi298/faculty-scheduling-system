@@ -1,35 +1,37 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserCog } from 'lucide-react';
-import { ApiError, Button, Card, Field, Input, useSession } from '@faculty-scheduling/ui';
+import { ApiError, Button, Card, Field, Input, consumeSessionExpiredNotice, useSession } from '@faculty-scheduling/ui';
 import { describeError } from '../lib/errorMessage';
 
-/** UNAUTHENTICATED reads as "session expired" everywhere else in this app — here it can only mean the email/password didn't match. */
+/** UNAUTHENTICATED reads as "session expired" everywhere else in this app — here it can only mean the staff code/password didn't match. */
 function describeLoginError(err: unknown): string {
   if (err instanceof ApiError && err.code === 'UNAUTHENTICATED') {
-    return 'Incorrect email or password.';
+    return 'Incorrect staff code or password.';
   }
   return describeError(err);
 }
 
+/** Faculty sign in with their staff code, not email — see services/api/src/repositories/auth.repository.ts's `findByIdentifier`. */
 export function Login(): React.ReactElement {
   const { login } = useSession();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [staffCode, setStaffCode] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [notice] = useState(() => (consumeSessionExpiredNotice() ? 'Your session expired. Please log in again.' : ''));
 
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    if (!email.trim() || !password) {
-      setError('Enter your email and password to continue.');
+    if (!staffCode.trim() || !password) {
+      setError('Enter your staff code and password to continue.');
       return;
     }
     setError(null);
     setSubmitting(true);
     try {
-      await login(email.trim(), password);
+      await login(staffCode.trim(), password);
       navigate('/', { replace: true });
     } catch (err) {
       setError(describeLoginError(err));
@@ -51,16 +53,22 @@ export function Login(): React.ReactElement {
           </div>
         </div>
 
+        {notice && (
+          <p role="status" style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            {notice}
+          </p>
+        )}
+
         <form onSubmit={handleSubmit}>
-          <Field label="Email" htmlFor="email" error={error ?? undefined}>
+          <Field label="Staff Code" htmlFor="staffCode" error={error ?? undefined}>
             <Input
-              id="email"
-              name="email"
-              type="email"
+              id="staffCode"
+              name="staffCode"
+              type="text"
               autoFocus
-              placeholder="you@srmist.edu.in"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              placeholder="e.g. CSE-F01"
+              value={staffCode}
+              onChange={(e) => setStaffCode(e.target.value)}
               invalid={Boolean(error)}
               autoComplete="username"
             />

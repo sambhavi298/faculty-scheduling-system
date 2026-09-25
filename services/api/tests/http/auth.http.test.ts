@@ -89,10 +89,35 @@ describe('POST /api/auth/login (integration — real Express app + real PostgreS
     expect(res.body.error).toBe('UNAUTHENTICATED');
   });
 
-  it('returns 400 VALIDATION_ERROR when email is missing', async () => {
+  it('returns 400 VALIDATION_ERROR when both identifier and email are missing', async () => {
     const res = await request(app).post('/api/auth/login').send({ password: 'Password123!' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('VALIDATION_ERROR');
+  });
+
+  it('logs in a student by registration (roll) number via the `identifier` field', async () => {
+    const res = await request(app).post('/api/auth/login').send({ identifier: 'CSE2026-001', password: 'Password123!' });
+    expect(res.status).toBe(200);
+    expect(res.body.user).toEqual({ id: '100', role: 'STUDENT', fullName: 'Alice Student', email: 'alice@example.edu' });
+  });
+
+  it('logs in a faculty member by staff code via the `identifier` field', async () => {
+    const res = await request(app).post('/api/auth/login').send({ identifier: 'CSE-F01', password: 'Password123!' });
+    expect(res.status).toBe(200);
+    expect(res.body.user.role).toBe('FACULTY');
+    expect(res.body.user.id).toBe('200');
+  });
+
+  it('logs in the admin by email via the `identifier` field (no roll number/staff code exists for ADMIN)', async () => {
+    const res = await request(app).post('/api/auth/login').send({ identifier: 'admin@example.edu', password: 'Password123!' });
+    expect(res.status).toBe(200);
+    expect(res.body.user.role).toBe('ADMIN');
+  });
+
+  it('rejects a registration number with the wrong password, same as a wrong email password', async () => {
+    const res = await request(app).post('/api/auth/login').send({ identifier: 'CSE2026-001', password: 'wrong-password' });
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('UNAUTHENTICATED');
   });
 
   it('returns 400 VALIDATION_ERROR when password is missing', async () => {

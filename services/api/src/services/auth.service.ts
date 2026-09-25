@@ -44,18 +44,24 @@ export class AuthService {
     private readonly jwtSecret: string
   ) {}
 
-  async login(email: unknown, password: unknown): Promise<LoginResult> {
-    if (typeof email !== 'string' || !email.trim()) {
-      throw new ValidationError('email is required');
+  /**
+   * `identifier` is deliberately generic: a STUDENT signs in with their
+   * registration (roll) number, a FACULTY member with their staff code, and
+   * an ADMIN with their email — see `AuthRepository.findByIdentifier` for
+   * how one value resolves against all three.
+   */
+  async login(identifier: unknown, password: unknown): Promise<LoginResult> {
+    if (typeof identifier !== 'string' || !identifier.trim()) {
+      throw new ValidationError('identifier is required');
     }
     if (typeof password !== 'string' || !password) {
       throw new ValidationError('password is required');
     }
 
-    const user = await this.repo.findByEmail(email.trim());
+    const user = await this.repo.findByIdentifier(identifier.trim());
     // Deliberately the SAME error for "no such user" and "wrong password" —
     // a different message for each would let an attacker enumerate which
-    // emails have accounts.
+    // registration numbers/staff codes/emails have accounts.
     if (!user) {
       throw new UnauthenticatedError();
     }

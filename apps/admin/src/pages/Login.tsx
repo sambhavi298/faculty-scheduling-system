@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ShieldCheck, ArrowRight } from 'lucide-react';
-import { ApiError, Button, Field, Input, useSession } from '@faculty-scheduling/ui';
+import { ApiError, Button, Field, Input, consumeSessionExpiredNotice, useSession } from '@faculty-scheduling/ui';
 
 interface LocationState {
   from?: { pathname: string };
@@ -17,7 +17,10 @@ function describeLoginError(err: unknown): string {
   return 'Something went wrong. Please try again.';
 }
 
-/** Real login — POST /api/auth/login. Only an account with role ADMIN is accepted here (see main.tsx's SessionProvider allowedRoles=['ADMIN']); any other real account is rejected with a clear message rather than silently granted admin access. */
+/**
+ * Real login — POST /api/auth/login. Only an account with role ADMIN is accepted here (see main.tsx's SessionProvider allowedRoles=['ADMIN']); any other real account is rejected with a clear message rather than silently granted admin access.
+ * Admin accounts have no registration number/staff code (see the `students`/`faculty` tables) — email stays the sign-in identifier here, unlike the Student/Faculty portals.
+ */
 export function Login(): React.ReactElement {
   const { session, login } = useSession();
   const navigate = useNavigate();
@@ -26,6 +29,7 @@ export function Login(): React.ReactElement {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [notice] = useState(() => (consumeSessionExpiredNotice() ? 'Your session expired. Please log in again.' : ''));
 
   if (session) {
     const state = location.state as LocationState | null;
@@ -63,6 +67,12 @@ export function Login(): React.ReactElement {
             <p className="auth-card__subtitle">Faculty Appointment Scheduling</p>
           </div>
         </div>
+
+        {notice && (
+          <p role="status" style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            {notice}
+          </p>
+        )}
 
         <form onSubmit={handleSubmit}>
           <Field label="Email" htmlFor="admin-email" error={error ?? undefined}>

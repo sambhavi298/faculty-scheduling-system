@@ -13,8 +13,8 @@ const SECRET = 'unit-test-secret';
 const REAL_PASSWORD = 'Password123!';
 let REAL_HASH: string;
 
-function fakeRepo(): jest.Mocked<Pick<AuthRepository, 'findByEmail'>> {
-  return { findByEmail: jest.fn() };
+function fakeRepo(): jest.Mocked<Pick<AuthRepository, 'findByIdentifier'>> {
+  return { findByIdentifier: jest.fn() };
 }
 
 function userRow(overrides: Partial<UserRow> = {}): UserRow {
@@ -41,19 +41,19 @@ describe('AuthService (unit — mocked AuthRepository, real bcrypt/jwt)', () => 
   }
 
   describe('input validation (never reaches the repository)', () => {
-    it('rejects a missing email', async () => {
+    it('rejects a missing identifier', async () => {
       const { repo, service } = fakeService();
       await expect(service.login(undefined, REAL_PASSWORD)).rejects.toThrow(ValidationError);
-      expect(repo.findByEmail).not.toHaveBeenCalled();
+      expect(repo.findByIdentifier).not.toHaveBeenCalled();
     });
 
-    it('rejects an empty/whitespace-only email', async () => {
+    it('rejects an empty/whitespace-only identifier', async () => {
       const { repo, service } = fakeService();
       await expect(service.login('   ', REAL_PASSWORD)).rejects.toThrow(ValidationError);
-      expect(repo.findByEmail).not.toHaveBeenCalled();
+      expect(repo.findByIdentifier).not.toHaveBeenCalled();
     });
 
-    it('rejects a non-string email', async () => {
+    it('rejects a non-string identifier', async () => {
       const { service } = fakeService();
       await expect(service.login(12345, REAL_PASSWORD)).rejects.toThrow(ValidationError);
     });
@@ -61,27 +61,27 @@ describe('AuthService (unit — mocked AuthRepository, real bcrypt/jwt)', () => 
     it('rejects a missing password', async () => {
       const { repo, service } = fakeService();
       await expect(service.login('prof.rao@example.edu', undefined)).rejects.toThrow(ValidationError);
-      expect(repo.findByEmail).not.toHaveBeenCalled();
+      expect(repo.findByIdentifier).not.toHaveBeenCalled();
     });
 
     it('rejects an empty password', async () => {
       const { repo, service } = fakeService();
       await expect(service.login('prof.rao@example.edu', '')).rejects.toThrow(ValidationError);
-      expect(repo.findByEmail).not.toHaveBeenCalled();
+      expect(repo.findByIdentifier).not.toHaveBeenCalled();
     });
   });
 
-  describe('authentication failures — same error for both, to avoid email enumeration', () => {
-    it('throws UnauthenticatedError when no user has that email', async () => {
+  describe('authentication failures — same error for both, to avoid identifier enumeration', () => {
+    it('throws UnauthenticatedError when no user matches that identifier', async () => {
       const { repo, service } = fakeService();
-      repo.findByEmail.mockResolvedValueOnce(null);
+      repo.findByIdentifier.mockResolvedValueOnce(null);
 
       await expect(service.login('nobody@example.edu', REAL_PASSWORD)).rejects.toThrow(UnauthenticatedError);
     });
 
     it('throws UnauthenticatedError when the password does not match the stored hash', async () => {
       const { repo, service } = fakeService();
-      repo.findByEmail.mockResolvedValueOnce(userRow());
+      repo.findByIdentifier.mockResolvedValueOnce(userRow());
 
       await expect(service.login('prof.rao@example.edu', 'wrong-password')).rejects.toThrow(UnauthenticatedError);
     });
@@ -89,7 +89,7 @@ describe('AuthService (unit — mocked AuthRepository, real bcrypt/jwt)', () => 
     it('produces the identical error message for "no such user" and "wrong password"', async () => {
       const { repo, service } = fakeService();
 
-      repo.findByEmail.mockResolvedValueOnce(null);
+      repo.findByIdentifier.mockResolvedValueOnce(null);
       let noUserMessage = '';
       try {
         await service.login('nobody@example.edu', REAL_PASSWORD);
@@ -97,7 +97,7 @@ describe('AuthService (unit — mocked AuthRepository, real bcrypt/jwt)', () => 
         noUserMessage = (err as Error).message;
       }
 
-      repo.findByEmail.mockResolvedValueOnce(userRow());
+      repo.findByIdentifier.mockResolvedValueOnce(userRow());
       let wrongPasswordMessage = '';
       try {
         await service.login('prof.rao@example.edu', 'wrong-password');
@@ -111,18 +111,18 @@ describe('AuthService (unit — mocked AuthRepository, real bcrypt/jwt)', () => 
   });
 
   describe('successful login', () => {
-    it('trims the email before looking it up', async () => {
+    it('trims the identifier before looking it up', async () => {
       const { repo, service } = fakeService();
-      repo.findByEmail.mockResolvedValueOnce(userRow());
+      repo.findByIdentifier.mockResolvedValueOnce(userRow());
 
       await service.login('  prof.rao@example.edu  ', REAL_PASSWORD);
 
-      expect(repo.findByEmail).toHaveBeenCalledWith('prof.rao@example.edu');
+      expect(repo.findByIdentifier).toHaveBeenCalledWith('prof.rao@example.edu');
     });
 
     it('returns a token signed with the configured secret, carrying {sub, role}', async () => {
       const { repo, service } = fakeService();
-      repo.findByEmail.mockResolvedValueOnce(userRow({ id: '200', role: 'FACULTY' }));
+      repo.findByIdentifier.mockResolvedValueOnce(userRow({ id: '200', role: 'FACULTY' }));
 
       const result = await service.login('prof.rao@example.edu', REAL_PASSWORD);
 
@@ -133,7 +133,7 @@ describe('AuthService (unit — mocked AuthRepository, real bcrypt/jwt)', () => 
 
     it('rejects a token verified against the wrong secret', async () => {
       const { repo, service } = fakeService();
-      repo.findByEmail.mockResolvedValueOnce(userRow());
+      repo.findByIdentifier.mockResolvedValueOnce(userRow());
 
       const result = await service.login('prof.rao@example.edu', REAL_PASSWORD);
 
@@ -142,7 +142,7 @@ describe('AuthService (unit — mocked AuthRepository, real bcrypt/jwt)', () => 
 
     it('returns user details (id, role, fullName, email) alongside the token, never the password hash', async () => {
       const { repo, service } = fakeService();
-      repo.findByEmail.mockResolvedValueOnce(
+      repo.findByIdentifier.mockResolvedValueOnce(
         userRow({ id: '900', role: 'ADMIN', full_name: 'Admin User', email: 'admin@example.edu' })
       );
 
@@ -155,7 +155,7 @@ describe('AuthService (unit — mocked AuthRepository, real bcrypt/jwt)', () => 
     it('works for every seeded role (STUDENT, FACULTY, ADMIN)', async () => {
       for (const role of ['STUDENT', 'FACULTY', 'ADMIN'] as const) {
         const { repo, service } = fakeService();
-        repo.findByEmail.mockResolvedValueOnce(userRow({ role }));
+        repo.findByIdentifier.mockResolvedValueOnce(userRow({ role }));
 
         const result = await service.login('prof.rao@example.edu', REAL_PASSWORD);
         expect(result.user.role).toBe(role);

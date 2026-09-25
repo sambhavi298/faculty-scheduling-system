@@ -1,45 +1,48 @@
 /*
  * Shared design tokens for all three frontends (student, faculty, admin).
- * Palette adapted from the admin submission's token set (izhaan_v3), which
- * was the most complete and consistent of the three prior submissions —
- * unified here into one system so all three apps render as one product,
- * only distinguished by a per-app accent tint.
+ * "Beige & Olive" palette (explicit direction from Sambhavi, replacing the
+ * navy/blue palette this used to be) — a warm beige/cream base with olive
+ * green as the primary accent family, sidebar in a deep olive-charcoal
+ * instead of navy. Each portal still gets its own shade within that same
+ * earth-tone family (see the .theme-* blocks below) so Student/Faculty/
+ * Admin stay visually distinguishable at a glance.
  */
 
 :root {
-  --bg-workspace: #f8fafc;
-  --bg-card: #ffffff;
-  --bg-subtle: #f1f5f9;
-  --border-color: #e2e8f0;
-  --text-primary: #0f172a;
-  --text-secondary: #64748b;
-  --text-muted: #94a3b8;
+  --bg-workspace: #f2ede0;
+  --bg-card: #fffdf7;
+  --bg-subtle: #e9e1cd;
+  --border-color: #d9cead;
+  --text-primary: #2e2c1f;
+  --text-secondary: #675f47;
+  --text-muted: #96896a;
 
-  --sidebar-bg: #0b0f1a;
-  --sidebar-border: #1e293b;
-  --sidebar-text: #94a3b8;
+  --sidebar-bg: #2c3320;
+  --sidebar-border: #3c452c;
+  --sidebar-text: #c3cbab;
   --sidebar-text-active: #ffffff;
-  --sidebar-item-hover: rgba(255, 255, 255, 0.06);
+  --sidebar-item-hover: rgba(255, 255, 255, 0.08);
 
-  --header-bg: #ffffff;
-  --header-border: #e2e8f0;
+  --header-bg: #fffdf7;
+  --header-border: #d9cead;
 
   /* Per-app accent — overridden by each app's own root class (see App.tsx). */
-  --accent-primary: #4f46e5;
-  --accent-primary-hover: #4338ca;
-  --accent-primary-tint: rgba(79, 70, 229, 0.08);
+  --accent-primary: #5c6e3f;
+  --accent-primary-hover: #4a5a32;
+  --accent-primary-tint: rgba(92, 110, 63, 0.1);
 
-  --accent-secondary: #0284c7;
-  --accent-success: #16a34a;
-  --accent-success-tint: #e7f4ec;
-  --accent-warning: #b65c00;
-  --accent-warning-tint: #fbeee0;
-  --accent-danger: #dc2626;
-  --accent-danger-tint: #fbeaea;
+  /* Warm bronze — used sparingly (secondary emphasis, not a whole component). */
+  --accent-secondary: #a98b4f;
+  --accent-success: #4f7a3a;
+  --accent-success-tint: #e7efdd;
+  --accent-warning: #a05a1f;
+  --accent-warning-tint: #f7e8d3;
+  --accent-danger: #a23b2e;
+  --accent-danger-tint: #f8e3de;
 
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 1px 2px 0 rgba(46, 44, 31, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(46, 44, 31, 0.07), 0 2px 4px -1px rgba(46, 44, 31, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(46, 44, 31, 0.1), 0 4px 6px -2px rgba(46, 44, 31, 0.05);
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -49,21 +52,21 @@
   --sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* Per-app accents. Applied via a class on <html> (see each app's main.tsx). */
+/* Per-app accents — variations within the same beige/olive earth-tone family. Applied via a class on <html> (see each app's main.tsx). */
 .theme-student {
-  --accent-primary: #2563eb;
-  --accent-primary-hover: #1d4ed8;
-  --accent-primary-tint: rgba(37, 99, 235, 0.08);
+  --accent-primary: #5c6e3f;
+  --accent-primary-hover: #4a5a32;
+  --accent-primary-tint: rgba(92, 110, 63, 0.1);
 }
 .theme-faculty {
-  --accent-primary: #4f46e5;
-  --accent-primary-hover: #4338ca;
-  --accent-primary-tint: rgba(79, 70, 229, 0.08);
+  --accent-primary: #3f5233;
+  --accent-primary-hover: #324229;
+  --accent-primary-tint: rgba(63, 82, 51, 0.1);
 }
 .theme-admin {
-  --accent-primary: #0f766e;
-  --accent-primary-hover: #0d5f59;
-  --accent-primary-tint: rgba(15, 118, 110, 0.08);
+  --accent-primary: #8a6d2f;
+  --accent-primary-hover: #705826;
+  --accent-primary-tint: rgba(138, 109, 47, 0.1);
 }
 
 * {
@@ -109,11 +112,11 @@ textarea {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.35);
+  background: rgba(150, 137, 106, 0.35);
   border-radius: var(--radius-pill);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.55);
+  background: rgba(150, 137, 106, 0.55);
 }
 
 .visually-hidden {

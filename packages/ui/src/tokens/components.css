@@ -548,10 +548,10 @@
   padding: 0.85rem 1rem;
   border-radius: var(--radius-md);
   background: var(--accent-warning-tint);
-  color: #7a4400;
+  color: #703d10;
   font-size: 0.84rem;
   margin-bottom: 1.5rem;
-  border: 1px solid rgba(182, 92, 0, 0.25);
+  border: 1px solid rgba(160, 90, 31, 0.25);
 }
 
 /* ---------- Auth / login screens ---------- */
@@ -560,7 +560,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(160deg, var(--accent-primary) 0%, #0b0f1a 100%);
+  background: linear-gradient(160deg, var(--accent-primary) 0%, #2c3320 100%);
   padding: 1.5rem;
 }
 

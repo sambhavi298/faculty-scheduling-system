@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
-import { ApiError, Button, Field, Input, useSession } from '@faculty-scheduling/ui';
+import { ApiError, Button, Field, Input, consumeSessionExpiredNotice, useSession } from '@faculty-scheduling/ui';
 import { describeError } from '../utils/errors';
 
-/** UNAUTHENTICATED from the shared error map reads as "session expired," which is right everywhere else but wrong on this screen — here it can only mean the email/password didn't match. */
+/** UNAUTHENTICATED from the shared error map reads as "session expired," which is right everywhere else but wrong on this screen — here it can only mean the registration number/password didn't match. */
 function describeLoginError(err: unknown): string {
   if (err instanceof ApiError && err.code === 'UNAUTHENTICATED') {
-    return 'Incorrect email or password.';
+    return 'Incorrect registration number or password.';
   }
   return describeError(err);
 }
@@ -16,25 +16,28 @@ function describeLoginError(err: unknown): string {
 /**
  * Real login screen — POST /api/auth/login (services/api/src/routes/auth.routes.ts),
  * bcrypt-verified password, a real JWT stored for every subsequent request.
+ * Students sign in with their registration (roll) number, not email — see
+ * services/api/src/repositories/auth.repository.ts's `findByIdentifier`.
  */
 export function Login(): React.ReactElement {
   const { login } = useSession();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [regNumber, setRegNumber] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [notice] = useState(() => (consumeSessionExpiredNotice() ? 'Your session expired. Please log in again.' : ''));
 
   async function handleSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
-    if (!email.trim() || !password) {
-      setError('Enter your email and password to continue.');
+    if (!regNumber.trim() || !password) {
+      setError('Enter your registration number and password to continue.');
       return;
     }
     setError('');
     setSubmitting(true);
     try {
-      await login(email.trim(), password);
+      await login(regNumber.trim(), password);
       navigate('/', { replace: true });
     } catch (err) {
       setError(describeLoginError(err));
@@ -56,14 +59,20 @@ export function Login(): React.ReactElement {
           </div>
         </div>
 
+        {notice && (
+          <p role="status" style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            {notice}
+          </p>
+        )}
+
         <form onSubmit={handleSubmit} noValidate>
-          <Field label="Email" htmlFor="email" error={error || undefined}>
+          <Field label="Registration Number" htmlFor="regNumber" error={error || undefined}>
             <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@srmist.edu.in"
+              id="regNumber"
+              type="text"
+              value={regNumber}
+              onChange={(e) => setRegNumber(e.target.value)}
+              placeholder="e.g. CSE2026-001"
               invalid={!!error}
               autoFocus
               autoComplete="username"

@@ -2,14 +2,22 @@ import React from 'react';
 import { Clock, CheckCircle2, XCircle, Ban, CheckCheck, AlertTriangle, TimerOff } from 'lucide-react';
 import type { AppointmentStatus } from '../types';
 
+/**
+ * Colors are CSS var() references into tokens/tokens.css, not literal hex —
+ * this used to be its own hardcoded palette (visually the most prominent
+ * colored element in every appointment list, and it silently didn't move
+ * when the shared token palette was last changed, since nothing here read
+ * a token). Wiring it to the same tokens every other component uses means
+ * a future palette change only has to touch tokens.css.
+ */
 const CONFIG: Record<AppointmentStatus, { label: string; bg: string; fg: string; Icon: typeof Clock }> = {
-  PENDING: { label: 'Pending', bg: '#fbeee0', fg: '#b65c00', Icon: Clock },
-  APPROVED: { label: 'Approved', bg: '#e7f4ec', fg: '#1f8a4c', Icon: CheckCircle2 },
-  REJECTED: { label: 'Rejected', bg: '#fbeaea', fg: '#b3261e', Icon: XCircle },
-  CANCELLED: { label: 'Cancelled', bg: '#f1f5f9', fg: '#5b6b8c', Icon: Ban },
-  COMPLETED: { label: 'Completed', bg: '#e7f4ec', fg: '#1f8a4c', Icon: CheckCheck },
-  MISSED: { label: 'Missed', bg: '#fbeaea', fg: '#b3261e', Icon: AlertTriangle },
-  EXPIRED: { label: 'Expired', bg: '#f1f5f9', fg: '#5b6b8c', Icon: TimerOff },
+  PENDING: { label: 'Pending', bg: 'var(--accent-warning-tint)', fg: 'var(--accent-warning)', Icon: Clock },
+  APPROVED: { label: 'Approved', bg: 'var(--accent-success-tint)', fg: 'var(--accent-success)', Icon: CheckCircle2 },
+  REJECTED: { label: 'Rejected', bg: 'var(--accent-danger-tint)', fg: 'var(--accent-danger)', Icon: XCircle },
+  CANCELLED: { label: 'Cancelled', bg: 'var(--bg-subtle)', fg: 'var(--text-secondary)', Icon: Ban },
+  COMPLETED: { label: 'Completed', bg: 'var(--accent-success-tint)', fg: 'var(--accent-success)', Icon: CheckCheck },
+  MISSED: { label: 'Missed', bg: 'var(--accent-danger-tint)', fg: 'var(--accent-danger)', Icon: AlertTriangle },
+  EXPIRED: { label: 'Expired', bg: 'var(--bg-subtle)', fg: 'var(--text-secondary)', Icon: TimerOff },
 };
 
 export function StatusBadge({ status }: { status: AppointmentStatus }): React.ReactElement {

@@ -3,16 +3,35 @@ import { AvailabilityOverlapError } from '../errors/availability-overlap.error';
 
 /**
  * node-pg has no custom type parser registered anywhere in this codebase
- * (db/client.ts), so a `date` column comes back as a JS `Date` object
- * (midnight UTC), not the `'YYYY-MM-DD'` string these row interfaces
- * declare — the same gap FacultyService.getAvailability() already closes
- * for `timestamptz` columns by converting to ISO strings before a row ever
- * leaves the Repository/Service boundary (Level 5's "never leak a raw
- * driver type to a caller"). Applied here for every `date` column this
- * repository returns (effective_from/effective_until/exception_date).
+ * (db/client.ts), so a `date` column comes back as a JS `Date` object, not
+ * the `'YYYY-MM-DD'` string these row interfaces declare — the same gap
+ * FacultyService.getAvailability() already closes for `timestamptz` columns
+ * by converting to ISO strings before a row ever leaves the Repository/
+ * Service boundary (Level 5's "never leak a raw driver type to a caller").
+ *
+ * That `Date` object is NOT midnight UTC, despite what an earlier version of
+ * this comment claimed — pg-types' default DATE parser builds it via
+ * `new Date(year, month, day)`, the LOCAL-timezone constructor, not UTC.
+ * Reading it back out with `.toISOString()` (always UTC) silently rolls the
+ * date back a day whenever the host's local timezone is ahead of UTC —
+ * which IST (UTC+5:30) always is. This surfaced as a real, reproducible test
+ * failure (`addException` persisting '2026-08-31' but reading back
+ * '2026-08-30') despite the database itself being correctly pinned to
+ * Asia/Kolkata (migration 0008) — a JS Date round-trip bug, not a database
+ * timezone bug. Reading the Date back out with the same LOCAL getters
+ * (getFullYear/getMonth/getDate) it was constructed from round-trips
+ * correctly regardless of the host machine's timezone. Applied here for
+ * every `date` column this repository returns (effective_from/
+ * effective_until/exception_date).
  */
 function toDateString(value: unknown): string {
-  return value instanceof Date ? value.toISOString().slice(0, 10) : (value as string);
+  if (!(value instanceof Date)) {
+    return value as string;
+  }
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export interface FacultyAvailabilityWindowRow {

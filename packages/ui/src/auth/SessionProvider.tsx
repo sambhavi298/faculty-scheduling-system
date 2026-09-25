@@ -1,7 +1,36 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { Session, UserRole } from '../types';
 import { authApi } from '../api/auth';
-import { setApiSession } from '../api/client';
+import { setApiSession, setUnauthorizedHandler } from '../api/client';
+
+const SESSION_EXPIRED_FLAG = 'faculty-scheduling:session-expired';
+
+/**
+ * Set right before a dead session is force-cleared because the backend
+ * rejected its token (see the effect below) — never on an ordinary logout
+ * button click. Each app's Login screen calls `consumeSessionExpiredNotice()`
+ * once on mount so a user who gets silently bounced back to /login (token
+ * expired mid-session, or the app restarted with a different JWT_SECRET)
+ * sees a clear reason instead of an unexplained redirect.
+ */
+function markSessionExpired(): void {
+  try {
+    sessionStorage.setItem(SESSION_EXPIRED_FLAG, '1');
+  } catch {
+    // best-effort — a missing notice is cosmetic, not a functional problem
+  }
+}
+
+/** Reads and clears the one-shot flag `markSessionExpired()` sets. Call once, on mount, from each app's Login screen. */
+export function consumeSessionExpiredNotice(): boolean {
+  try {
+    const flagged = sessionStorage.getItem(SESSION_EXPIRED_FLAG) === '1';
+    if (flagged) sessionStorage.removeItem(SESSION_EXPIRED_FLAG);
+    return flagged;
+  } catch {
+    return false;
+  }
+}
 
 interface SessionContextValue {
   session: Session | null;
@@ -15,7 +44,7 @@ interface SessionContextValue {
    * in the same browser tab, the same guarantee the old per-app storageKey
    * scheme gave when there was no real role to check.
    */
-  login: (email: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -75,8 +104,8 @@ export function SessionProvider({
   setApiSession(session);
 
   const login = useCallback(
-    async (email: string, password: string): Promise<void> => {
-      const result = await authApi.login(email, password);
+    async (identifier: string, password: string): Promise<void> => {
+      const result = await authApi.login(identifier, password);
       if (!roles.includes(result.user.role)) {
         throw new Error(
           `This account is a ${result.user.role.toLowerCase()} account and can't sign in here. Use the correct portal for this account.`
@@ -107,6 +136,19 @@ export function SessionProvider({
     }
     setSession(null);
   }, [storageKey]);
+
+  // Register this provider as the API client's global "your token just got
+  // rejected" handler. A plain effect (not render-body, unlike setApiSession
+  // above) is correct here: this only sets up a callback for a FUTURE fetch
+  // failure, so there's no ordering hazard with a descendant's mount-time
+  // effect the way there is for the session value itself.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      markSessionExpired();
+      logout();
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [logout]);
 
   const value = useMemo(() => ({ session, login, logout }), [session, login, logout]);
 

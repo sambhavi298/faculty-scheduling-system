@@ -20,6 +20,7 @@ import { ApiError } from '../types';
  */
 
 let currentSession: Session | null = null;
+let unauthorizedHandler: (() => void) | null = null;
 
 export function setApiSession(session: Session | null): void {
   currentSession = session;
@@ -29,7 +30,22 @@ export function getApiSession(): Session | null {
   return currentSession;
 }
 
+/**
+ * Registered once by SessionProvider (see auth/SessionProvider.tsx) so this
+ * client can react the moment the backend rejects a request this client
+ * believed was authenticated, instead of leaving the app sitting on a
+ * protected screen with every widget silently showing "UNAUTHENTICATED."
+ * Only fired for a 401 on a request that DID carry a bearer token (see the
+ * `hadSession` check in `request()` below) — never for POST /api/auth/login
+ * itself, which legitimately returns 401 UNAUTHENTICATED for a plain
+ * wrong-password attempt and must not be treated as "your session died."
+ */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const hadSession = currentSession !== null;
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
   if (currentSession) {
@@ -61,6 +77,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const errBody = body as Partial<ApiErrorBody> | null;
     const code: ApiErrorCode = (errBody?.error as ApiErrorCode) ?? 'INTERNAL_ERROR';
     const message = errBody?.message ?? `Request failed with status ${res.status}`;
+
+    // The token we sent (identify.middleware.ts verified it server-side,
+    // not us) was rejected — expired (12h TTL, AuthService.TOKEN_TTL),
+    // malformed, or otherwise no longer honoured. Clear it immediately so
+    // no further call goes out carrying a token we already know is dead,
+    // and notify whoever registered a handler so the app's own route
+    // guards (RequireAuth / Layout / ProtectedRoute — all of which key off
+    // "is there a session") redirect to /login on the very next render,
+    // instead of leaving the user stranded on an authenticated screen
+    // where every request just fails in place.
+    if (res.status === 401 && hadSession) {
+      currentSession = null;
+      unauthorizedHandler?.();
+    }
+
     throw new ApiError(res.status, code, message);
   }
 

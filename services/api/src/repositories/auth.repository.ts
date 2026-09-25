@@ -20,14 +20,29 @@ export class AuthRepository {
   constructor(private readonly db: Queryable) {}
 
   /**
-   * Case-insensitive lookup, matching the `users_email_lower_uq` unique
-   * index (migrations/sql/0001) that is the actual uniqueness guarantee —
-   * this query's `LOWER(email) = LOWER($1)` is deliberately the same
-   * predicate shape as that index so Postgres can use it directly instead
-   * of a sequential scan.
+   * A single login field accepts a STUDENT's registration (roll) number, a
+   * FACULTY member's staff code, or an email — this is what lets every app
+   * keep ONE login form while the Student and Faculty portals label the
+   * field "Registration Number" / "Staff Code" (there is no such column for
+   * ADMIN, which still signs in by email; see the three apps' Login.tsx).
+   *
+   * `roll_number`/`staff_code` are matched case-sensitively, deliberately —
+   * they carry a plain (non-`LOWER()`) UNIQUE constraint each
+   * (`students_roll_number_uq`, `faculty_staff_code_uq`, migrations/sql/0001),
+   * so a case-insensitive match here could in principle straddle two
+   * distinct rows differing only in case. Email keeps its existing
+   * case-insensitive match, which mirrors the real uniqueness guarantee for
+   * that column (`users_email_lower_uq`).
    */
-  async findByEmail(email: string): Promise<UserRow | null> {
-    const result = await this.db.query<UserRow>(`SELECT * FROM users WHERE LOWER(email) = LOWER($1)`, [email]);
+  async findByIdentifier(identifier: string): Promise<UserRow | null> {
+    const result = await this.db.query<UserRow>(
+      `SELECT u.* FROM users u
+       LEFT JOIN students s ON s.id = u.id
+       LEFT JOIN faculty f ON f.id = u.id
+       WHERE LOWER(u.email) = LOWER($1) OR s.roll_number = $1 OR f.staff_code = $1
+       LIMIT 1`,
+      [identifier]
+    );
     return result.rows[0] ?? null;
   }
 }

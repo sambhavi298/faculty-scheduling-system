@@ -45,7 +45,7 @@ describe('Faculty Login', () => {
 
   it('renders the login form', () => {
     renderLogin();
-    expect(screen.getByLabelText('Email')).toBeInTheDocument();
+    expect(screen.getByLabelText('Staff Code')).toBeInTheDocument();
     expect(screen.getByLabelText('Password')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /log in/i })).toBeInTheDocument();
   });
@@ -58,7 +58,7 @@ describe('Faculty Login', () => {
 
     await user.click(screen.getByRole('button', { name: /log in/i }));
 
-    expect(await screen.findByText(/enter your email and password/i)).toBeInTheDocument();
+    expect(await screen.findByText(/enter your staff code and password/i)).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -70,7 +70,7 @@ describe('Faculty Login', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    await user.type(screen.getByLabelText('Email'), 'prof.rao@example.edu');
+    await user.type(screen.getByLabelText('Staff Code'), 'CSE-F01');
     await user.type(screen.getByLabelText('Password'), 'Password123!');
     await user.click(screen.getByRole('button', { name: /log in/i }));
 
@@ -80,16 +80,16 @@ describe('Faculty Login', () => {
     });
   });
 
-  it('shows "Incorrect email or password" on a 401 UNAUTHENTICATED response, without storing a session', async () => {
+  it('shows "Incorrect staff code or password" on a 401 UNAUTHENTICATED response, without storing a session', async () => {
     mockFetchOnce(401, { error: 'UNAUTHENTICATED', message: 'Invalid credentials' });
     const user = userEvent.setup();
     renderLogin();
 
-    await user.type(screen.getByLabelText('Email'), 'prof.rao@example.edu');
+    await user.type(screen.getByLabelText('Staff Code'), 'CSE-F01');
     await user.type(screen.getByLabelText('Password'), 'wrong-password');
     await user.click(screen.getByRole('button', { name: /log in/i }));
 
-    expect(await screen.findByText('Incorrect email or password.')).toBeInTheDocument();
+    expect(await screen.findByText('Incorrect staff code or password.')).toBeInTheDocument();
     expect(localStorage.getItem('faculty-session-test')).toBeNull();
   });
 
@@ -101,7 +101,7 @@ describe('Faculty Login', () => {
     const user = userEvent.setup();
     renderLogin();
 
-    await user.type(screen.getByLabelText('Email'), 'alice@example.edu');
+    await user.type(screen.getByLabelText('Staff Code'), 'CSE2026-001');
     await user.type(screen.getByLabelText('Password'), 'Password123!');
     await user.click(screen.getByRole('button', { name: /log in/i }));
 

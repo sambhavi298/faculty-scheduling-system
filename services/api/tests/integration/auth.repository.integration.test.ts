@@ -26,42 +26,61 @@ describe('AuthRepository (integration — real PostgreSQL)', () => {
     await pool.end();
   });
 
-  describe('findByEmail', () => {
-    it('returns the real seeded row for a student', async () => {
-      const row = await repo.findByEmail('alice@example.edu');
+  describe('findByIdentifier', () => {
+    it('returns the real seeded row for a student, by email', async () => {
+      const row = await repo.findByIdentifier('alice@example.edu');
       expect(row).not.toBeNull();
       expect(row!.id).toBe('100');
       expect(row!.role).toBe('STUDENT');
       expect(row!.full_name).toBe('Alice Student');
     });
 
-    it('returns the real seeded row for a faculty member', async () => {
-      const row = await repo.findByEmail('prof.rao@example.edu');
+    it('returns the real seeded row for a student, by registration (roll) number', async () => {
+      const row = await repo.findByIdentifier('CSE2026-001');
+      expect(row).not.toBeNull();
+      expect(row!.id).toBe('100');
+      expect(row!.role).toBe('STUDENT');
+    });
+
+    it('returns the real seeded row for a faculty member, by email', async () => {
+      const row = await repo.findByIdentifier('prof.rao@example.edu');
       expect(row).not.toBeNull();
       expect(row!.id).toBe('200');
       expect(row!.role).toBe('FACULTY');
     });
 
-    it('returns the real seeded row for the admin', async () => {
-      const row = await repo.findByEmail('admin@example.edu');
+    it('returns the real seeded row for a faculty member, by staff code', async () => {
+      const row = await repo.findByIdentifier('CSE-F01');
+      expect(row).not.toBeNull();
+      expect(row!.id).toBe('200');
+      expect(row!.role).toBe('FACULTY');
+    });
+
+    it('returns the real seeded row for the admin, by email', async () => {
+      const row = await repo.findByIdentifier('admin@example.edu');
       expect(row).not.toBeNull();
       expect(row!.id).toBe('900');
       expect(row!.role).toBe('ADMIN');
     });
 
-    it('is case-insensitive, matching the users_email_lower_uq index', async () => {
-      const row = await repo.findByEmail('PROF.RAO@EXAMPLE.EDU');
+    it('is case-insensitive on email, matching the users_email_lower_uq index', async () => {
+      const row = await repo.findByIdentifier('PROF.RAO@EXAMPLE.EDU');
       expect(row).not.toBeNull();
       expect(row!.id).toBe('200');
     });
 
+    it('is case-SENSITIVE on roll_number/staff_code, matching their plain (non-LOWER) unique constraints', async () => {
+      expect(await repo.findByIdentifier('cse2026-001')).toBeNull();
+      expect(await repo.findByIdentifier('cse-f01')).toBeNull();
+    });
+
     it('returns a real pgcrypto-generated bcrypt hash, not the legacy placeholder', async () => {
-      const row = await repo.findByEmail('alice@example.edu');
+      const row = await repo.findByIdentifier('alice@example.edu');
       expect(row!.password_hash).toMatch(/^\$2[aby]\$/);
     });
 
-    it('returns null for an email that does not exist', async () => {
-      expect(await repo.findByEmail('nobody@example.edu')).toBeNull();
+    it('returns null for an identifier that matches nothing', async () => {
+      expect(await repo.findByIdentifier('nobody@example.edu')).toBeNull();
     });
   });
 });
